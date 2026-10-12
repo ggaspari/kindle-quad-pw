@@ -6,7 +6,7 @@ os.environ.setdefault("TZ", "America/Sao_Paulo"); time.tzset()
 import render as R, sources as S, kindle as K
 
 now = time.time()
-CFG = {"units": "C", "slots": ["weather", "news", "sports", "sky"], "radar_nm": 25, "sports_logos": False, "odds": True,
+CFG = {"units": "C", "sky_mode": "sea", "slots": ["weather", "news", "sports", "sky"], "radar_nm": 25, "sports_logos": False, "odds": True,
        "odds_style": "spread", "news_pages": 4}
 lt = time.localtime(now)
 day = lambda i: time.strftime("%Y-%m-%d", time.localtime(now + 86400 * i))
@@ -51,7 +51,17 @@ recent = [R.Sighting(callsign="SWA1", airline="Southwest", origin="BWI", dest="T
                      dest_city="Tampa", alt_ft=3000, speed_kt=200, dist_nm=3, elev_deg=12, seen_at=now - 600 * i,
                      flight_no=f"WN {1200 + i}", aircraft="Boeing 737 MAX 8", bearing=10) for i in range(1, 12)]
 nearby = [(3, 40, "DAL2474"), (8, 200, "SWA12"), (15, 290, "N123AB"), (21, 100, "JBU55")]
-base = dict(now=now, cfg=CFG, weather=wx, heads=heads, quotes=qs, teams=teams, recent=recent, day_count=143,
+import math
+_h0 = int(now // 3600) * 3600 - 24 * 3600
+_rows = [(_h0 + i * 3600, 0.95 * math.cos(2 * math.pi * (i * 3600 - 5.3 * 3600) / (12.42 * 3600)) + 0.05,
+          1.1 + 0.4 * math.sin(i / 9), 9 + (i % 5) * 0.4, 125 + (i % 7) * 5, 27.2) for i in range(96)]
+_days = {}
+for r in _rows:
+    k = time.strftime("%Y-%m-%d", time.localtime(r[0]))
+    if k not in _days or r[2] > _days[k][1]:
+        _days[k] = (k, r[2], r[3], r[4])
+sea = S.Sea(hourly=_rows, tides=S.tide_extremes([(r[0], r[1]) for r in _rows]), days=[_days[k] for k in sorted(_days)])
+base = dict(now=now, cfg=CFG, sea=sea, weather=wx, heads=heads, quotes=qs, teams=teams, recent=recent, day_count=143,
             nearby=nearby, featured=fl, battery=76, updated=now,
             brief="Yields keep climbing as stocks slip; the Bucs head to Detroit Sunday and rain chances jump Thursday.")
 cases = {"quad": R.Ctx(**base)}

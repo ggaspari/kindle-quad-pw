@@ -83,6 +83,7 @@ DEFAULTS = {
     "sports_logos": True,
     "odds": True,
     "odds_style": "spread",      # spread | moneyline | winpct (hockey/baseball always moneyline)
+    "sky_mode": "sea",           # sky corner: "sea" (tides, waves; Open-Meteo Marine) | "planes" (ADS-B)
     "radar_nm": 25,
     "iss": True, "launch": True,
     # needs the claude CLI and a login; on by default only where both exist
@@ -167,7 +168,8 @@ events = None
 def start_sky():
     global sky, events
     sky = Sky(cfg["lat"], cfg["lon"], radius_nm=max(10, int(cfg["radar_nm"])))
-    sky.start()
+    if cfg.get("sky_mode") == "planes":      # no point polling ADS-B every minute for the sea view
+        sky.start()
     events = skyevents.SkyEvents(cfg["lat"], cfg["lon"], iss=cfg["iss"], launch=cfg["launch"])
     events.start()
 
@@ -270,6 +272,8 @@ class Board:
                 logos.prefetch(urls)
             self.snap["teams"], self.snap["live"] = teams, live
         elif name == "sky":
+            if cfg.get("sky_mode") == "sea":
+                self.snap["sea"] = S.sea(cfg, force)
             featured, recent, _ = sky.snapshot()
             self.snap["featured"], self.snap["recent"] = featured, recent
             self.snap["nearby"] = sky.nearby()
@@ -311,6 +315,7 @@ class Board:
                      event=sn.get("event"), upcoming=sn.get("upcoming") or [], brief=sn.get("brief", ""),
                      sticky=sticky, indoor_f=t_f, indoor_rh=dv.get("rh"), battery=batt,
                      on_usb=dv.get("mode") == "live", cycle=self.cycle, updated=self.updated or now,
+                     sea=sn.get("sea"),
                      page=page or self.page)
 
     # -- commit (call with cond held)
@@ -642,6 +647,7 @@ class H(BaseHTTPRequestHandler):
         st["sources"] = {
             "weather": S._weather.status(), "alerts": S._alerts.status(), "news": S.news_status(),
             "quotes": S.quotes_status(), "sports": S.sports_status(), "brief": S.brief_status(),
+            "sea": S._sea.status() if cfg.get("sky_mode") == "sea" else None,
             "sky": {"feeds": dict(adsb.FEED_STATUS), "sgp4": skyevents.HAVE_SGP4,
                     "age_s": round(now - sky.updated_at) if sky and sky.updated_at else None,
                     "error": sky.last_error if sky else None},
@@ -679,8 +685,8 @@ class H(BaseHTTPRequestHandler):
         new["kindle_touch_flip"] = "".join(a for a in "xy" if a in str(new["kindle_touch_flip"]).lower())
         if sorted(new["slots"]) != sorted(R.PANELS):
             raise ValueError("slots must use each panel exactly once")
-        moved = (new["lat"], new["lon"], new["radar_nm"], new["iss"], new["launch"]) != \
-                (cfg["lat"], cfg["lon"], cfg["radar_nm"], cfg["iss"], cfg["launch"])
+        moved = (new["lat"], new["lon"], new["radar_nm"], new["iss"], new["launch"], new["sky_mode"]) != \
+                (cfg["lat"], cfg["lon"], cfg["radar_nm"], cfg["iss"], cfg["launch"], cfg["sky_mode"])
         rewx = moved or any(new[k] != cfg[k] for k in ("units", "alerts", "alert_geocode"))
         cfg.clear()
         cfg.update(new)
@@ -694,7 +700,7 @@ class H(BaseHTTPRequestHandler):
         # data-shaping changes need a refetch; purely visual ones just a redraw
         for name in ("weather", "news", "sports", "sky"):
             try:
-                board.take(name, force=name in ("weather",) and rewx)
+                board.take(name, force=(name == "weather" and rewx) or (name == "sky" and moved))
             except Exception:
                 traceback.print_exc()
         with board.cond:
