@@ -18,6 +18,7 @@ An e-paper kitchen dashboard for the Seeed reTerminal E1001. Four corners of you
 | **Weather** | current conditions, rain chance for the next few hours, 3-day forecast, 15-minute rain nowcast, official alerts (INMET in Brazil, NWS in the US) |
 | **News & markets** | index and ticker moves, rotating headlines (g1, Agência Brasil, Folha, BBC News Brasil; WSJ still available) |
 | **Your teams** | live score, last result or next game for any ESPN team, with TV and the betting line |
+| **Sea (default here)** | next high/low tide, the tide curve, waves and water temperature, from Open-Meteo Marine; `sky_mode` = `planes` brings the plane corner back |
 | **Plane overhead** | airline, route, aircraft, altitude and which way to look, from live ADS-B. An ISS pass or a visible rocket launch takes this corner over |
 
 A strip under the header carries one line: your own pinned message, a severe weather alert, or a sentence from Claude that ties the day together (optional).
@@ -104,6 +105,7 @@ On first boot the board opens a Wi-Fi setup portal named `QuadBoard-XXXX`. Join 
 
 ## Notes
 
+- The sky corner defaults to the sea (`sky_mode: sea`): community ADS-B networks (adsb.lol, adsb.fi, OpenSky) have no receivers around Salvador. Tides come from an ocean model: good for "when is the water high", not for navigation.
 - The default location is Salvador, BA (-12.9711, -38.5108; IBGE 2927408 for INMET alerts). Change city, latitude and longitude on the dashboard.
 - Times use the server's `TZ` (defaults to `America/Sao_Paulo`). Market hours are always NYSE's.
 - Units default to °C and km/h, the clock to 24-hour, the board's language to Portuguese (dates, labels, weather, sports and sky; `lang` = `en` switches it all back) and numbers to 1.234,56; all switch on the dashboard.

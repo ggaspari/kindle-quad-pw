@@ -362,6 +362,79 @@ def weather(cfg, force=False) -> Weather | None:
     return w
 
 
+# ============================================================ sea
+# Open-Meteo Marine (keyless): tide curve (sea level incl. tides), waves and
+# water temperature. cell_selection=sea snaps a coastal point to the nearest
+# ocean grid cell. The tide comes from an ocean model, so it is a good guide
+# to when the water is high or low, not a navigation table.
+
+@dataclass
+class Sea:
+    hourly: list         # [(epoch, level_m, wave_m, period_s, dir_deg, sst_c)]
+    tides: list          # [(epoch, level_m, "high" | "low")], past day and next ~2
+    days: list           # [(YYYY-MM-DD, wave_max_m, period_s, dir_deg)]
+    fetched: float = 0.0
+
+    def at(self, ts):
+        """The hourly row nearest to ts."""
+        return min(self.hourly, key=lambda r: abs(r[0] - ts)) if self.hourly else None
+
+    def next_tides(self, now, n=4):
+        return [t for t in self.tides if t[0] >= now][:n]
+
+
+def tide_extremes(rows):
+    """Highs and lows in an hourly sea-level series, each refined with a
+    parabola through the three samples around it (to the minute, not the hour)."""
+    pts = [(t, lv) for t, lv in rows if lv is not None]
+    out = []
+    for i in range(1, len(pts) - 1):
+        (t0, y0), (t1, y1), (t2, y2) = pts[i - 1], pts[i], pts[i + 1]
+        if not ((y1 > y0 and y1 >= y2) or (y1 < y0 and y1 <= y2)):
+            continue
+        den = y0 - 2 * y1 + y2
+        off = (y0 - y2) / (2 * den) if den else 0.0      # in samples, -0.5..0.5
+        off = max(-0.5, min(0.5, off))
+        step = (t2 - t0) / 2
+        out.append((t1 + off * step, y1 - (y0 - y2) * off / 4, "high" if y1 > y0 else "low"))
+    return out
+
+
+def _fetch_sea(lat, lon):
+    r = requests.get("https://marine-api.open-meteo.com/v1/marine", params={
+        "latitude": lat, "longitude": lon, "cell_selection": "sea",
+        "hourly": "sea_level_height_msl,wave_height,wave_period,wave_direction,sea_surface_temperature",
+        "timezone": "auto", "timeformat": "unixtime", "past_days": 1, "forecast_days": 3,
+    }, headers={"User-Agent": UA_BOT}, timeout=10)
+    r.raise_for_status()
+    hr = r.json()["hourly"]
+    col = lambda k: hr.get(k) or [None] * len(hr["time"])
+    rows = list(zip(hr["time"], col("sea_level_height_msl"), col("wave_height"), col("wave_period"),
+                    col("wave_direction"), col("sea_surface_temperature")))
+    if not any(r[1] is not None or r[2] is not None for r in rows):
+        raise RuntimeError("no marine data for this point")
+    days = {}
+    for t, _, wh, wp, wd, _ in rows:
+        if wh is None:
+            continue
+        d = time.strftime("%Y-%m-%d", time.localtime(t))
+        if d not in days or wh > days[d][1]:
+            days[d] = (d, wh, wp, wd)
+    return Sea(hourly=rows, tides=tide_extremes([(r[0], r[1]) for r in rows]),
+               days=[days[d] for d in sorted(days)], fetched=time.time())
+
+
+_sea = Cached(1800)
+
+
+def sea(cfg, force=False) -> Sea | None:
+    lat, lon = cfg["lat"], cfg["lon"]
+
+    def fetch_sea():
+        return _fetch_sea(lat, lon)
+    return _sea.get(fetch_sea, force)
+
+
 # ============================================================ news
 
 # key -> (label, url). Brazilian feeds first; the WSJ ones keep their old

@@ -418,6 +418,7 @@ class Ctx:
     page: str = "quad"
     notes_new: int = 0
     stale: dict = field(default_factory=dict)
+    sea: object = None            # sources.Sea when the sky corner shows the sea
 
 
 def _deg(v):
@@ -749,11 +750,18 @@ def _flight_label(s):
     return s.flight_no or s.callsign
 
 
+def sea_mode(ctx) -> bool:
+    """The sky corner shows the sea (tides, waves) instead of planes overhead."""
+    return ctx.cfg.get("sky_mode", "planes") == "sea"
+
+
 def panel_sky(ctx: Ctx, size):
     c, d = canvas(size)
     w, h = size
     if ctx.event is not None:
         return _event_card(c, d, ctx, size)
+    if sea_mode(ctx):
+        return panel_sea(ctx, size)
     s = ctx.featured
     if s is None:
         return _quiet_sky(c, d, ctx, size)
@@ -884,6 +892,189 @@ def _event_card(c, d, ctx, size):
         text(d, (12, y), ellipsize(d, ln, F("sb", 17), w - 110), F("sb", 17))
         y += 24
     compass_arrow(c, w - 52, 100, 38, ev.bearing)
+    return c
+
+
+# ------------------------------------------------------------------ sea
+
+def _meters(v):
+    return f"{sources.fmt(v, 1)} m"
+
+
+def _water_temp(ctx, c):
+    if c is None:
+        return ""
+    return _deg(c * 9 / 5 + 32 if ctx.cfg.get("units") == "F" else c)
+
+
+def _wave_line(sea, row):
+    """'1,2 m · 9 s · SE' for one hourly row."""
+    from adsb import compass
+    if row is None or row[2] is None:
+        return ""
+    bits = [_meters(row[2])]
+    if row[3]:
+        bits.append(f"{row[3]:.0f} s")
+    if row[4] is not None:
+        bits.append(cdir(compass(row[4])))
+    return " · ".join(bits)
+
+
+def _tide_word(kind):
+    return L("HIGH", "ALTA") if kind == "high" else L("LOW", "BAIXA")
+
+
+def _tide_chart(c, d, sea, x0, y0, x1, y1, t0, t1, now, labels=False):
+    """Sea level from t0 to t1 as a line, with a dotted mean-sea-level guide,
+    a 'now' marker and, if labels, each high/low's time and height."""
+    pts = [(t, lv) for t, lv, *_ in sea.hourly if lv is not None and t0 - 3600 <= t <= t1 + 3600]
+    if len(pts) < 3:
+        return False
+    lo, hi = min(p[1] for p in pts), max(p[1] for p in pts)
+    pad = (hi - lo) * 0.12 or 0.1
+    lo, hi = lo - pad, hi + pad
+
+    def X(t):
+        return x0 + (x1 - x0) * (t - t0) / (t1 - t0)
+
+    def Y(v):
+        return y1 - (v - lo) / (hi - lo) * (y1 - y0)
+    if lo < 0 < hi:
+        dotted(d, x0, x1, int(Y(0)), 4)
+    line = [(X(t), Y(v)) for t, v in pts if t0 <= t <= t1]
+    if len(line) > 1:
+        d.line(line, fill=INK, width=3 if labels else 2)
+    nx = X(now)
+    if x0 <= nx <= x1:
+        for yy in range(int(y0), int(y1), 6):
+            d.line((nx, yy, nx, yy + 3), fill=INK)
+    fl = F("csb", 15)
+    for t, v, kind in sea.tides:
+        if not (t0 <= t <= t1):
+            continue
+        px, py = X(t), Y(v)
+        d.ellipse((px - 3, py - 3, px + 3, py + 3), fill=INK)
+        if labels:
+            lab = f"{hm(t)}  {_meters(v)}"
+            lx = min(max(px, x0 + tw(d, lab, fl) / 2), x1 - tw(d, lab, fl) / 2)
+            if kind == "high":
+                text(d, (lx, py - 6), lab, fl, anchor="md")
+            else:
+                text(d, (lx, py + 6), lab, fl, anchor="ma")
+    return True
+
+
+def panel_sea(ctx: Ctx, size):
+    """The sky corner, at the coast: next tides, the tide curve and the waves."""
+    c, d = canvas(size)
+    w, h = size
+    sea, now = ctx.sea, ctx.now
+    if sea is None:
+        text(d, (w / 2, h / 2), L("Sea data unavailable", "Dados do mar indisponíveis"), F("m", 17), anchor="mm")
+        return c
+    row = sea.at(now)
+    text(d, (12, 6), L("TIDE", "MARÉ"), F("cb", 18))
+    if row and row[5] is not None:
+        text(d, (w - 12, 6), f"{L('Water', 'Água')} {_water_temp(ctx, row[5])}", F("csb", 18), anchor="ra")
+    nxt = sea.next_tides(now, 2)
+    colw = (w - 24) / 2
+    for i, (t, v, kind) in enumerate(nxt):
+        x = 12 + i * colw
+        tri(d, x, 36, 12, kind == "high")
+        text(d, (x + 18, 31), _tide_word(kind), F("cb", 17))
+        text(d, (x, 50), hm(t), F("sb", 30))
+        text(d, (x + tw(d, hm(t), F("sb", 30)) + 8, 63), _meters(v), F("cm", 16))
+    if not nxt:
+        text(d, (12, 40), L("No tide data here", "Sem dados de maré aqui"), F("m", 16))
+    by = h - 44
+    _tide_chart(c, d, sea, 12, 92, w - 12, by - 10, now - 2 * 3600, now + 22 * 3600, now)
+    d.line((10, by - 4, w - 10, by - 4), fill=INK, width=1)
+    wl = _wave_line(sea, row)
+    text(d, (12, by), L("Waves", "Ondas"), F("cm", 16))
+    text(d, (12 + tw(d, L("Waves", "Ondas"), F("cm", 16)) + 8, by - 2), wl or "—", F("sb", 18))
+    today = time.strftime("%Y-%m-%d", time.localtime(now))
+    mx = next((dd for dd in sea.days if dd[0] == today), None)
+    if mx:
+        text(d, (12, by + 21), f"{L('today up to', 'hoje até')} {_meters(mx[1])}", F("cm", 15))
+    return c
+
+
+def detail_sea(ctx, size):
+    """Tide curve for two days with every high and low marked, the tide
+    table by day, and the waves for the next days."""
+    c, d = canvas(size)
+    w, h = size
+    sea, now = ctx.sea, ctx.now
+    if sea is None:
+        text(d, (w / 2, h / 2), L("Sea data unavailable", "Dados do mar indisponíveis"), F("m", 20), anchor="mm")
+        return c
+    split = 520
+    text(d, (16, 6), L("TIDES · NEXT 48 HOURS", "MARÉS · PRÓXIMAS 48 HORAS"), F("cb", 17))
+    t0, t1 = now - 2 * 3600, now + 46 * 3600
+    cx0, cx1, cy0, cy1 = 20, split - 24, 52, h - 40
+    _tide_chart(c, d, sea, cx0, cy0, cx1, cy1, t0, t1, now, labels=True)
+    # day boundaries along the bottom
+    lt = time.localtime(t0)
+    midnight = time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday + 1, 0, 0, 0, 0, 0, -1))
+    d.line((cx0, cy1 + 4, cx1, cy1 + 4), fill=INK)
+    k = 0
+    while midnight < t1 and k < 3:
+        mx = cx0 + (cx1 - cx0) * (midnight - t0) / (t1 - t0)
+        d.line((mx, cy1 + 4, mx, cy1 + 14), fill=INK, width=2)
+        text(d, (mx + 4, cy1 + 8), day_name(time.localtime(midnight), short=True).upper(), F("cb", 15))
+        midnight += 86400
+        k += 1
+    text(d, (cx0, cy1 + 8), L("now", "agora"), F("cm", 14))
+    d.line((split, 8, split, h - 10), fill=INK, width=2)
+    # tide table by day
+    x = split + 18
+    y = 6
+    text(d, (x, y), L("TIDE TABLE", "TÁBUA DE MARÉS"), F("cb", 17))
+    y += 28
+    shown_day = None
+    lt = time.localtime(now)
+    today0 = time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday, 0, 0, 0, 0, 0, -1))
+    for t, v, kind in sea.tides:
+        if t < today0:                     # the whole of today, like a printed tide table
+            continue
+        day = time.strftime("%Y-%m-%d", time.localtime(t))
+        if y + 24 + (21 if day != shown_day else 0) > h - 128:      # stop above the waves block
+            break
+        if day != shown_day:
+            shown_day = day
+            ddiff = round((time.mktime(time.strptime(day, "%Y-%m-%d"))
+                           - time.mktime(time.strptime(time.strftime("%Y-%m-%d", time.localtime(now)), "%Y-%m-%d"))) / 86400)
+            label = tr("Today") if ddiff == 0 else tr("Tomorrow") if ddiff == 1 else day_name(time.localtime(t))
+            text(d, (x, y), label, F("csb", 16))
+            y += 21
+        tri(d, x + 6, y + 6, 10, kind == "high")
+        text(d, (x + 24, y), hm(t), F("sb", 19))
+        text(d, (x + 100, y + 2), _meters(v), F("m", 17))
+        text(d, (w - 14, y + 3), _tide_word(kind).lower(), F("cm", 15), anchor="ra")
+        y += 24
+    # waves by day + water
+    yb = h - 118
+    d.line((x - 4, yb - 8, w - 12, yb - 8), fill=INK, width=1)
+    text(d, (x, yb), L("WAVES", "ONDAS"), F("cb", 16))
+    row = sea.at(now)
+    if row and row[5] is not None:
+        text(d, (w - 14, yb), f"{L('Water', 'Água')} {_water_temp(ctx, row[5])}", F("csb", 16), anchor="ra")
+    yb += 22
+    from adsb import compass
+    for dd in sea.days:
+        if dd[0] < time.strftime("%Y-%m-%d", time.localtime(now)):
+            continue
+        if yb > h - 22:
+            break
+        tt = time.strptime(dd[0], "%Y-%m-%d")
+        bits = [f"{L('up to', 'até')} {_meters(dd[1])}"]
+        if dd[2]:
+            bits.append(f"{dd[2]:.0f} s")
+        if dd[3] is not None:
+            bits.append(cdir(compass(dd[3])))
+        text(d, (x, yb), day_name(tt, short=True), F("csb", 16))
+        text(d, (x + 48, yb), " · ".join(bits), F("m", 16))
+        yb += 21
     return c
 
 
@@ -1157,6 +1348,8 @@ def detail_sports(ctx, size):
 
 
 def detail_sky(ctx, size):
+    if sea_mode(ctx):
+        return detail_sea(ctx, size)
     c, d = canvas(size)
     w, h = size
     radius = ctx.cfg.get("radar_nm", 25)
@@ -1193,6 +1386,8 @@ def compose_page(ctx: Ctx, name: str) -> Image.Image:
     s, d = canvas((W, STRIP_H))
     titles = ({"weather": "Clima", "news": "Notícias e mercado", "sports": "Placar e agenda", "sky": "Céu"} if pt() else
               {"weather": "Weather", "news": "News & markets", "sports": "Scores & schedule", "sky": "Sky above"})
+    if sea_mode(ctx):
+        titles["sky"] = L("Sea & tides", "Mar e marés")
     text(d, (14, STRIP_H / 2 - 1), titles.get(name, name).upper(), F("cb", 19), anchor="lm")
     text(d, (W - 14, STRIP_H / 2 - 1), NAV_HINT_PT if pt() else NAV_HINT, F("cm", 15), anchor="rm")
     d.line((0, STRIP_H - 1, W, STRIP_H - 1), fill=INK, width=2)
