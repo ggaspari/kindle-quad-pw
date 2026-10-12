@@ -20,6 +20,8 @@ from dataclasses import dataclass, field
 
 from PIL import Image, ImageChops, ImageDraw, ImageFont
 
+import sources   # for the clock setting (sources.CLOCK24); render still never fetches
+
 W, H = 800, 480
 HEAD_H = 38
 STRIP_H = 28
@@ -261,12 +263,14 @@ def compass_arrow(c, cx, cy, r, bearing):
 
 def hm(ts, ampm=True):
     t = time.localtime(ts)
+    if sources.CLOCK24:
+        return f"{t.tm_hour:02d}:{t.tm_min:02d}"
     s = f"{t.tm_hour % 12 or 12}:{t.tm_min:02d}"
     return s + (" AM" if t.tm_hour < 12 else " PM") if ampm else s
 
 
 def when(ts, tbd=False):
-    """Friendly game time: 'Tonight 7:00', 'Tomorrow 1:00 PM', 'Sun 1:00 PM', 'Oct 12'."""
+    """Friendly game time: 'Tonight 19:00', 'Tomorrow 13:00', 'Sun 13:00', 'Oct 12' (or 12h)."""
     now = time.localtime()
     t = time.localtime(ts)
     days = (time.mktime(t[:3] + (0, 0, 0, 0, 0, -1)) - time.mktime(now[:3] + (0, 0, 0, 0, 0, -1))) / 86400
@@ -453,8 +457,7 @@ def _rain_bars(d, hourly, now, x0, x1, y0, y1):
         if hgt >= 1:
             d.rectangle((bx + 1, by1 - hgt, bx + cw - 2, by1), fill=INK)
         if i % 3 == 0:
-            lt = time.localtime(ts)
-            lab = "now" if i == 0 else f"{lt.tm_hour % 12 or 12}{'a' if lt.tm_hour < 12 else 'p'}"
+            lab = "now" if i == 0 else sources.hour_label(ts)
             text(d, (bx + 1, by1 + 1), lab, fl)
     pk = hrs[peak][2]
     if pk >= 10:
@@ -936,8 +939,7 @@ def detail_weather(ctx, size):
         for i in range(0, n, 3):
             ts, t, pop, code = hrs[i]
             text(d, (X(i), Y(t) - 6), f"{t:.0f}°", F("csb", 15), anchor="md")
-            lt = time.localtime(ts)
-            text(d, (X(i), y1 + 3), f"{lt.tm_hour % 12 or 12}{'a' if lt.tm_hour < 12 else 'p'}", F("cm", 14), anchor="ma")
+            text(d, (X(i), y1 + 3), sources.hour_label(ts), F("cm", 14), anchor="ma")
         text(d, (x1, 4), "bars: chance of rain", F("cr", 14), anchor="ra")
     # 5-day strip
     days = wx.days[:5]
