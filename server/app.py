@@ -24,7 +24,7 @@ import traceback
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-os.environ.setdefault("TZ", "America/New_York")
+os.environ.setdefault("TZ", "America/Sao_Paulo")
 if hasattr(time, "tzset"):
     time.tzset()
 
@@ -53,7 +53,9 @@ DEFAULTS = {
     "label": "Home",
     "city": "Tampa",             # named in the Claude brief's prompt
     "lat": 27.9506, "lon": -82.4572,
-    "units": "F",
+    "units": "C",                # C = °C and km/h; F = °F and mph
+    "alerts": "auto",            # auto (NWS in the US, INMET in Brazil) | nws | inmet | off
+    "alert_geocode": "",         # optional IBGE city code, for INMET alerts without a polygon
     "slots": ["weather", "news", "sports", "sky"],
     "interval_min": 10,          # the main cadence: every panel refreshes on this beat
     "sky_min": 10,               # plane panel can run faster (partial refresh, no flash)
@@ -664,6 +666,7 @@ class H(BaseHTTPRequestHandler):
             raise ValueError("slots must use each panel exactly once")
         moved = (new["lat"], new["lon"], new["radar_nm"], new["iss"], new["launch"]) != \
                 (cfg["lat"], cfg["lon"], cfg["radar_nm"], cfg["iss"], cfg["launch"])
+        rewx = moved or any(new[k] != cfg[k] for k in ("units", "alerts", "alert_geocode"))
         cfg.clear()
         cfg.update(new)
         S.TEAMS.update({k: tuple(v) for k, v in cfg.get("custom_teams", {}).items()})
@@ -673,7 +676,7 @@ class H(BaseHTTPRequestHandler):
         # data-shaping changes need a refetch; purely visual ones just a redraw
         for name in ("weather", "news", "sports", "sky"):
             try:
-                board.take(name, force=name in ("weather",) and moved)
+                board.take(name, force=name in ("weather",) and rewx)
             except Exception:
                 traceback.print_exc()
         with board.cond:

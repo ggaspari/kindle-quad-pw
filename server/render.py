@@ -391,7 +391,7 @@ def panel_weather(ctx: Ctx, size):
     rx = 238
     facts = []                         # (today's rain % is the chart below)
     facts.append(("Wind", f"{WIND[int((wx.wind_dir + 22.5) // 45) % 8]} {wx.wind:.0f}"
-                  + (f"–{wx.gust:.0f}" if wx.gust - wx.wind >= 8 else "")))
+                  + (f"–{wx.gust:.0f}" if wx.gust - wx.wind >= (13 if ctx.cfg.get("units") == "C" else 8) else "")))
     facts.append(("Humid", f"{wx.humidity}%"))
     if today and today.sunset:
         # after sunset, show tomorrow's sunrise instead
@@ -710,7 +710,8 @@ def panel_sky(ctx: Ctx, size):
     d.line((10, by - 4, w - 10, by - 4), fill=INK, width=1)
     alt = f"{s.alt_ft:,} ft" if s.alt_ft else "ground"
     text(d, (12, by), ellipsize(d, s.aircraft or "Aircraft", F("sb", 17), w - 80), F("sb", 17))
-    text(d, (12, by + 21), f"{alt} · {s.speed_kt:.0f} kt · {s.dist_nm * 1.15078:.1f} mi", F("cm", 16))
+    dist = f"{s.dist_nm * 1.852:.1f} km" if ctx.cfg.get("units") == "C" else f"{s.dist_nm * 1.15078:.1f} mi"
+    text(d, (12, by + 21), f"{alt} · {s.speed_kt:.0f} kt · {dist}", F("cm", 16))
     from adsb import compass
     compass_arrow(c, w - 34, by + 20, 21, s.bearing)
     look = f"look {compass(s.bearing)}"

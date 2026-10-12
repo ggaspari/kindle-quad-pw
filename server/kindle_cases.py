@@ -2,22 +2,23 @@
 python3 kindle_cases.py  ->  kindle_*.png (landscape, as you'd see it) and
 kindle_native_quad.png (rotated, exactly what the Kindle gets)."""
 import os, time
-os.environ.setdefault("TZ", "America/New_York"); time.tzset()
+os.environ.setdefault("TZ", "America/Sao_Paulo"); time.tzset()
 import render as R, sources as S, kindle as K
 
 now = time.time()
-CFG = {"slots": ["weather", "news", "sports", "sky"], "radar_nm": 25, "sports_logos": False, "odds": True,
+CFG = {"units": "C", "slots": ["weather", "news", "sports", "sky"], "radar_nm": 25, "sports_logos": False, "odds": True,
        "odds_style": "spread", "news_pages": 4}
 lt = time.localtime(now)
 day = lambda i: time.strftime("%Y-%m-%d", time.localtime(now + 86400 * i))
-wx = S.Weather(temp=84, feels=91, code=2, is_day=lt.tm_hour in range(7, 19), humidity=68, wind=9, wind_dir=120, gust=19,
+wx = S.Weather(temp=29, feels=33, code=2, is_day=lt.tm_hour in range(7, 19), humidity=68, wind=14, wind_dir=120, gust=31,
                days=[S.Day(day(i), hi, lo, code, pop, "7:24 AM", "7:02 PM", uv)
-                     for i, (hi, lo, code, pop, uv) in enumerate([(88, 74, 2, 40, 8), (86, 73, 80, 70, 7),
-                                                                   (84, 72, 95, 80, 5), (85, 71, 3, 20, 8),
-                                                                   (87, 72, 0, 10, 9)])],
-               hourly=[(now + 3600 * i, 84 - abs(i - 4) * 0.8, [5, 10, 20, 45, 70, 60, 30, 15, 10, 5, 5, 5][i % 12], 2)
+                     for i, (hi, lo, code, pop, uv) in enumerate([(31, 23, 2, 40, 8), (30, 22, 80, 70, 7),
+                                                                   (28, 21, 95, 80, 5), (29, 20, 3, 20, 8),
+                                                                   (31, 21, 0, 10, 9)])],
+               hourly=[(now + 3600 * i, 29 - abs(i - 4) * 0.5, [5, 10, 20, 45, 70, 60, 30, 15, 10, 5, 5, 5][i % 12], 2)
                        for i in range(24)],
-               rain_note="Rain likely around 4 PM")
+               rain_note="Rain likely around 4 PM",
+               alerts=[("Tempestade", "INMET: Tempestade (Perigo) até 21:00", "Severe")])
 heads = [S.Headline(t, "world", now - 600 * i) for i, t in enumerate([
     "Fed officials signal patience on further rate cuts as inflation cools unevenly",
     "Oil slides as OPEC+ weighs another output increase",

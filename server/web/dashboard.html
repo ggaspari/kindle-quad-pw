@@ -126,11 +126,14 @@ td:first-child{font-weight:600;white-space:nowrap}
       <div class="grid2">
         <label>Label<input name="label"></label>
         <label>City (for the brief)<input name="city"></label>
-        <label>Units<select name="units"><option value="F">°F</option><option value="C">°C</option></select></label>
+        <label>Units<select name="units"><option value="C">°C, km/h</option><option value="F">°F, mph</option></select></label>
+        <label>Weather alerts<select name="alerts"><option value="auto">Auto (by location)</option>
+          <option value="inmet">INMET (Brazil)</option><option value="nws">NWS (US)</option><option value="off">Off</option></select></label>
+        <label>IBGE city code (optional)<input name="alert_geocode" placeholder="3550308"></label>
         <label>Latitude<input name="lat" type="number" step="0.0001"></label>
         <label>Longitude<input name="lon" type="number" step="0.0001"></label>
       </div>
-      <p class="note">Location also moves the plane radar and ISS/launch visibility.</p>
+      <p class="note">Location also moves the plane radar and ISS/launch visibility. Forecast: Open-Meteo (worldwide). Alerts: INMET inside Brazil, NWS inside the US; the IBGE code only matters if an INMET alert comes without a map area.</p>
     </section>
 
     <section class="card">
@@ -311,7 +314,7 @@ function render() {
   const rows = [];
   const src = S.sources;
   const st = (o) => o ? (o.error ? `<span style="color:var(--bad)">${o.error}</span> (last ok ${ago(o.age_s)})` : `ok · ${ago(o.age_s)}`) : '—';
-  rows.push(['Weather', st(src.weather)], ['NWS alerts', st(src.alerts)], ['Quotes', st(src.quotes)]);
+  rows.push(['Weather', st(src.weather)], ['Alerts (' + (S.cfg.alerts || 'auto') + ')', st(src.alerts)], ['Quotes', st(src.quotes)]);
   for (const [k, v] of Object.entries(src.news)) rows.push(['WSJ ' + (S.feeds[k] || k), st(v)]);
   for (const [k, v] of Object.entries(src.sports)) rows.push([S.teams[k] || k, st(v)]);
   rows.push(['Plane feed', st(src.sky)], ['Claude brief', st(src.brief)]);

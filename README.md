@@ -15,7 +15,7 @@ An e-paper kitchen dashboard for the Seeed reTerminal E1001. Four corners of you
 
 | Corner | Shows |
 |---|---|
-| **Weather** | current conditions, rain chance for the next few hours, 3-day forecast, 15-minute rain nowcast, NWS alerts |
+| **Weather** | current conditions, rain chance for the next few hours, 3-day forecast, 15-minute rain nowcast, official alerts (INMET in Brazil, NWS in the US) |
 | **News & markets** | index and ticker moves, rotating WSJ headlines |
 | **Your teams** | live score, last result or next game for any ESPN team, with TV and the betting line |
 | **Plane overhead** | airline, route, aircraft, altitude and which way to look, from live ADS-B. An ISS pass or a visible rocket launch takes this corner over |
@@ -50,7 +50,7 @@ A jailbroken first-gen **Kindle Paperwhite** works as a second screen: the serve
 
 ## Data sources
 
-All keyless: Open-Meteo (forecast + nowcast), api.weather.gov (alerts, US only), WSJ RSS, Yahoo Finance spark, ESPN's site API, adsb.lol + adsbdb, CelesTrak + Launch Library 2. The one-line brief uses the [`claude`](https://docs.claude.com/en/docs/claude-code) CLI if it's installed and logged in. Turn `llm_brief` off otherwise.
+All keyless: Open-Meteo (forecast + nowcast, worldwide), INMET (alerts, Brazil) or api.weather.gov (alerts, US), WSJ RSS, Yahoo Finance spark, ESPN's site API, adsb.lol + adsbdb, CelesTrak + Launch Library 2. The one-line brief uses the [`claude`](https://docs.claude.com/en/docs/claude-code) CLI if it's installed and logged in. Turn `llm_brief` off otherwise.
 
 ## Setup
 
@@ -100,7 +100,8 @@ On first boot the board opens a Wi-Fi setup portal named `QuadBoard-XXXX`. Join 
 
 ## Notes
 
-- Times use the server's `TZ` (defaults to `America/New_York`).
+- Times use the server's `TZ` (defaults to `America/Sao_Paulo`). Market hours are always NYSE's.
+- Units default to °C and km/h; switch to °F / mph on the dashboard.
 - The notes feature reads a separate "note box" project's database and is off unless `QUAD_NOTES_DB` is set.
 - Team logos and airline logos are downloaded at runtime and cached in `server/cache/`. None are shipped in this repo.
 
