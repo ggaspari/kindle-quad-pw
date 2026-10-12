@@ -1,0 +1,16 @@
+# secrets
+firmware/src/secrets.h
+*.env
+!*.env.example
+# build output
+firmware/.pio/
+__pycache__/
+# runtime state and caches
+server/config.json
+server/state.json
+server/cache/
+server/*.png
+OPS.local.md
+# Kindle client
+kindle/extensions/quadboard/quad.conf
+kindle/extensions/quadboard/quad.log

@@ -1,0 +1,18 @@
+# Copy to quad.conf (same folder) and edit.
+
+# The server, plain HTTP: the Kindle's old wget can't do modern TLS, so keep
+# this on your LAN (QUAD_BIND=0.0.0.0 on the server, or an nginx/Caddy that
+# also listens on plain http).
+SERVER=http://192.168.1.10:8740
+TOKEN=change-me            # the server's QUAD_TOKEN
+
+# auto: on USB = stay awake, long-poll, taps always work.
+#       on battery = sleep between scheduled updates, taps only while awake.
+# usb / battery to force one.
+POWER=auto
+AWAKE_S=25                 # on battery: stay awake this long after a wake or a tap
+HOLD_S=3                   # hold a finger this long to quit back to the Kindle
+
+# Leave blank unless the log says it picked the wrong one
+TOUCH_DEV=                 # e.g. /dev/input/event1
+RTC=                       # rtc0 or rtc1
