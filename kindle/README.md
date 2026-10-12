@@ -33,7 +33,7 @@ Kindle (quad.sh, busybox)                     servidor (app.py)
 
 1. **Jailbreak** no PW1 e o **KUAL** instalado ([MobileRead: Kindle Developer's Corner](https://www.mobileread.com/forums/forumdisplay.php?f=150)).
 2. Opcional, mas recomendado: **FBInk** (do NiLuJe). Se o KOReader estiver instalado, ele já vem junto. Sem FBInk, o script usa o `eips` do sistema, que também funciona.
-3. O **servidor** deste repositório rodando numa máquina da rede local (Raspberry Pi, NAS…). Veja o [README principal](../README.md#server).
+3. O **servidor** deste repositório rodando numa máquina da rede local (Raspberry Pi, NAS…). Veja o [`CASAOS.md`](../CASAOS.md) ou a seção [Montando](../README.md#montando) do README principal.
 
 ## Instalação
 
