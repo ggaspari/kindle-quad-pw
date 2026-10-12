@@ -60,6 +60,10 @@ All keyless: Open-Meteo (forecast + nowcast, worldwide), INMET (alerts, Brazil) 
 
 ### Server
 
+**On CasaOS / Docker:** `docker compose up -d --build` from the repo root (set `QUAD_TOKEN` and `QUAD_ADMIN` in `.env` first). Step by step, in Portuguese: [`CASAOS.md`](CASAOS.md).
+
+Or straight from Python:
+
 ```sh
 cd server
 pip install -r requirements.txt

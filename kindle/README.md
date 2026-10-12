@@ -39,6 +39,8 @@ Kindle (quad.sh, busybox)                     servidor (app.py)
 
 ### 1. Servidor
 
+**No CasaOS:** siga o [`CASAOS.md`](../CASAOS.md). O container já escuta na rede local, na porta 8740, e você pode pular o resto desta seção.
+
 O firmware do PW1 tem `wget`/OpenSSL antigos que não falam TLS moderno, então o Kindle usa **HTTP puro na rede local**. Faça o servidor escutar na LAN:
 
 ```sh

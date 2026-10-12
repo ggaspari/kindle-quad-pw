@@ -16,6 +16,7 @@ import io
 import json
 import os
 import re
+import shutil
 import sqlite3
 import sys
 import threading
@@ -83,7 +84,7 @@ DEFAULTS = {
     "odds_style": "spread",      # spread | moneyline | winpct (hockey/baseball always moneyline)
     "radar_nm": 25,
     "iss": True, "launch": True,
-    "llm_brief": True,
+    "llm_brief": bool(shutil.which("claude")),   # needs the claude CLI; off where it isn't installed (Docker)
     "llm_brief_min": 60,
     "brief_lang": "Brazilian Portuguese",
     "llm_model": "claude-haiku-4-5-20251001",

@@ -1,0 +1,10 @@
+.git
+**/__pycache__
+server/cache
+server/config.json
+server/state.json
+server/*.png
+server/quad.env
+kindle
+firmware
+docs

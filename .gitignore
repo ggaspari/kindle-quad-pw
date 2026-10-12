@@ -14,3 +14,6 @@ OPS.local.md
 # Kindle client
 kindle/extensions/quadboard/quad.conf
 kindle/extensions/quadboard/quad.log
+
+# Docker
+.env
