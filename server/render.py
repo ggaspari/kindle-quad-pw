@@ -30,6 +30,7 @@ CELL_W, CELL_H = W // 2, (H - GRID_Y) // 2      # 400 x 207
 BODY = (W, H - GRID_Y)                            # detail pages: 800 x 414
 # Detail-page title bar hint. The Kindle client swaps it for its tap zones.
 NAV_HINT = "middle: back  ·  right: next  ·  left: home"
+NAV_HINT_PT = "meio: voltar  ·  direita: próxima  ·  esquerda: início"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FONT_DIR = os.path.join(HERE, "fonts")
@@ -283,6 +284,30 @@ def pt():
     return sources.LANG == "pt"
 
 
+def L(en, pt_):
+    """The same UI text in English or Portuguese, by the board's language."""
+    return pt_ if pt() else en
+
+
+_COMPASS_PT = str.maketrans({"E": "L", "W": "O"})      # leste, oeste
+
+
+def cdir(s):
+    """Compass direction for display: 'SW' -> 'SO', 'E' -> 'L' in Portuguese."""
+    return s.translate(_COMPASS_PT) if pt() else s
+
+
+# words that come in from skyevents (ISS passes, launches)
+_SKY_PT = {"Space Station": "Estação Espacial", "passes overhead": "passa bem no alto", "passes over": "passa por aqui",
+           "overhead": "bem no alto", "high up": "alto no céu", "midway up": "a meia altura",
+           "low on the horizon": "baixo no horizonte", "confirmed": "confirmado", "expected": "previsto",
+           "approximate": "aproximado"}
+
+
+def sky_word(s):
+    return _SKY_PT.get(s, s) if pt() and s else s
+
+
 def tr(s):
     """A date/time word in the board's language."""
     return _WORDS_PT.get(s, s) if pt() else s
@@ -329,6 +354,11 @@ def ago(ts):
     if m < 60:
         return f"há {m} min" if pt() else f"{m} min ago"
     return f"há {m // 60}h{m % 60:02d}" if pt() else f"{m // 60}h {m % 60:02d}m ago"
+
+
+def ago_short(ts):
+    """'5 min' / '1h05' with no 'ago' / 'há'."""
+    return ago(ts).replace(" ago", "").replace("há ", "")
 
 
 # ================================================================== panels
@@ -403,7 +433,7 @@ def panel_weather(ctx: Ctx, size):
     w, h = size
     wx = ctx.weather
     if wx is None:
-        text(d, (w / 2, h / 2), "Weather unavailable", F("m", 18), anchor="mm")
+        text(d, (w / 2, h / 2), L("Weather unavailable", "Clima indisponível"), F("m", 18), anchor="mm")
         return c
     y0 = 8
     if wx.alerts:
@@ -423,24 +453,26 @@ def panel_weather(ctx: Ctx, size):
     text(d, (tx, y0 - 8), _deg(wx.temp), big)
     today = wx.days[0] if wx.days else None
     cy = y0 + (66 if y0 < 20 else 56)
-    text(d, (14, cy + 6), ellipsize(d, desc, F("sb", 19), 170), F("sb", 19))
+    fd = fit_font(d, desc, "sb", 214, [19, 18, 17, 16])     # "Parcialmente nublado" needs the room
+    text(d, (14, cy + 6), ellipsize(d, desc, fd, 214), fd)
     if not (wx.alerts and wx.rain_note):
-        text(d, (14, cy + 28), f"Feels {_deg(wx.feels)}" + (f"  ·  H {today.hi:.0f}  L {today.lo:.0f}" if today else ""),
+        text(d, (14, cy + 28), f"{L('Feels', 'Sensação')} {_deg(wx.feels)}"
+             + (f"  ·  {L('H', 'Máx')} {today.hi:.0f}  {L('L', 'Mín')} {today.lo:.0f}" if today else ""),
              F("m", 16))
 
     # right column of small facts
     rx = 238
     facts = []                         # (today's rain % is the chart below)
-    facts.append(("Wind", f"{WIND[int((wx.wind_dir + 22.5) // 45) % 8]} {wx.wind:.0f}"
+    facts.append((L("Wind", "Vento"), f"{cdir(WIND[int((wx.wind_dir + 22.5) // 45) % 8])} {wx.wind:.0f}"
                   + (f"–{wx.gust:.0f}" if wx.gust - wx.wind >= (13 if ctx.cfg.get("units") == "C" else 8) else "")))
-    facts.append(("Humid", f"{wx.humidity}%"))
+    facts.append((L("Humid", "Umidade"), f"{wx.humidity}%"))
     if today and today.sunset:
         # after sunset, show tomorrow's sunrise instead
         tm = time.localtime(ctx.now)
         if tm.tm_hour >= 12:
-            facts.append(("Sunset", today.sunset.replace(" PM", "p").replace(" AM", "a")))
+            facts.append((L("Sunset", "Pôr do sol"), today.sunset.replace(" PM", "p").replace(" AM", "a")))
         else:
-            facts.append(("Sunrise", today.sunrise.replace(" AM", "a").replace(" PM", "p")))
+            facts.append((L("Sunrise", "Nascer do sol"), today.sunrise.replace(" AM", "a").replace(" PM", "p")))
     fy = y0 + 2
     for k, v in facts[:2 if wx.alerts else 3]:
         text(d, (rx, fy), k, F("cm", 16))
@@ -551,7 +583,7 @@ def panel_news(ctx: Ctx, size):
     f = F("m", 17)
     lh = 19
     if not heads:
-        text(d, (w / 2, (y + h) / 2), "No headlines", F("m", 17), anchor="mm")
+        text(d, (w / 2, (y + h) / 2), L("No headlines", "Sem manchetes"), F("m", 17), anchor="mm")
         return c
     # rotate through the list, one page per scheduled update
     avail = h - y + 2
@@ -599,8 +631,8 @@ def _odds_bits(g, abbr, cfg, sport, full=False):
     if full:
         if o.ml_us is not None and f"{o.ml_us:+d}" not in main:
             bits.append(f"ML {o.ml_us:+d}")
-        if o.win_pct is not None and "to win" not in main:
-            bits.append(f"{o.win_pct}% to win")
+        if o.win_pct is not None and "%" not in main:
+            bits.append(f"{o.win_pct}% " + L("to win", "de vitória"))
     if o.total:
         bits.append(f"O/U {o.total:g}")
     return bits
@@ -609,6 +641,20 @@ def _odds_bits(g, abbr, cfg, sport, full=False):
 def _sport(r):
     import sources
     return sources.TEAMS.get(r.key, ("", ""))[1]
+
+
+def vs_word(home):
+    """'vs ' / 'at ' before the opponent; in Portuguese 'x ' at home, '@ ' away."""
+    return L("vs " if home else "at ", "x " if home else "@ ")
+
+
+def result_word(r):
+    """W / L / D (T) -> V / D / E (vitória, derrota, empate) in Portuguese."""
+    return {"W": "V", "L": "D", "D": "E", "T": "E"}.get(r, r) if pt() else r
+
+
+def ats_word(a):
+    return {"covered": "cobriu", "missed": "não cobriu", "push": "empate"}.get(a, a) if pt() else a
 
 
 def _team_lines(r, cfg=None):
@@ -621,23 +667,25 @@ def _team_lines(r, cfg=None):
     def vs(g, name=True):
         who = g.opp_name if name else g.opp
         rk = f"#{g.opp_rank} " if g.opp_rank else ""
-        return ("vs " if g.home else "at ") + rk + who
+        return vs_word(g.home) + rk + who
     if r.live:
         g = r.live
         bits = [g.detail] + ([g.tv] if g.tv else []) + _odds_bits(g, g.abbr, cfg, _sport(r))[:1]
-        return "LIVE", f"{score(g)} {vs(g)}", " · ".join(bits)
+        return L("LIVE", "AO VIVO"), f"{score(g)} {vs(g)}", " · ".join(bits)
     if r.fresh_result:
         g = r.last
         bits = []
         if g.ats and cfg.get("odds", True):
-            bits.append(f"{g.ats} {g.odds.spread_us:+g}".replace("+0", "PK")
-                        if _sport(r) not in ("hockey", "baseball") else ("won as " if g.result == "W" else "lost as ")
-                        + ("fav" if (g.odds.ml_us or 0) < 0 else "dog"))
+            bits.append(f"{ats_word(g.ats)} {g.odds.spread_us:+g}".replace("+0", "PK")
+                        if _sport(r) not in ("hockey", "baseball") else
+                        L(("won as " if g.result == "W" else "lost as ") + ("fav" if (g.odds.ml_us or 0) < 0 else "dog"),
+                          ("venceu como " if g.result == "W" else "perdeu como ")
+                          + ("favorito" if (g.odds.ml_us or 0) < 0 else "azarão")))
         if r.next:
-            bits.append("Next: " + when(r.next.start, r.next.time_tbd) + " " + vs(r.next, False))
+            bits.append(L("Next: ", "Próx.: ") + when(r.next.start, r.next.time_tbd) + " " + vs(r.next, False))
         elif g.note:
             bits.append(g.note)
-        return g.result, f"{score(g)} {vs(g)}", " · ".join(bits)
+        return result_word(g.result), f"{score(g)} {vs(g)}", " · ".join(bits)
     if r.next:
         g = r.next
         prim = when(g.start, g.time_tbd) + " " + vs(g)
@@ -649,9 +697,9 @@ def _team_lines(r, cfg=None):
         odds = _odds_bits(g, g.abbr, cfg, _sport(r))
         bits += odds
         if r.last and not g.note and not odds:
-            bits.append(f"last {r.last.result} {score(r.last)} {r.last.opp}")
+            bits.append(f"{L('last', 'último')} {result_word(r.last.result)} {score(r.last)} {r.last.opp}")
         return None, prim, " · ".join(bits)
-    return None, "No games scheduled", ""
+    return None, L("No games scheduled", "Sem jogos marcados"), ""
 
 
 def panel_sports(ctx: Ctx, size, rows=None):
@@ -659,7 +707,7 @@ def panel_sports(ctx: Ctx, size, rows=None):
     w, h = size
     teams = ctx.teams
     if not teams:
-        text(d, (w / 2, h / 2), "No games in the next few weeks", F("m", 17), anchor="mm")
+        text(d, (w / 2, h / 2), L("No games in the next few weeks", "Sem jogos nas próximas semanas"), F("m", 17), anchor="mm")
         return c
     per = rows or max(1, min(4, len(teams)))
     pages = [teams[i:i + per] for i in range(0, len(teams), per)]
@@ -712,7 +760,7 @@ def panel_sky(ctx: Ctx, size):
     # header: OVERHEAD NOW + flight number
     y = 6
     f_air = F("sb", 18)
-    air = s.airline or "Private / unknown"
+    air = s.airline or L("Private / unknown", "Particular / desconhecido")
     fn = _flight_label(s)
     fnf = F("cb", 22)
     text(d, (12, y + 2), ellipsize(d, air, f_air, w - 40 - tw(d, fn, fnf)), f_air)
@@ -726,7 +774,7 @@ def panel_sky(ctx: Ctx, size):
         arrow_right(d, ax, y + 22, 44, 11, width=4)
         text(d, (ax + 56, y - 6), s.dest, f)
         y += 50
-        cities = f"{s.origin_city or s.origin} to {s.dest_city or s.dest}"
+        cities = f"{s.origin_city or s.origin} {L('to', 'para')} {s.dest_city or s.dest}"
         text(d, (12, y), ellipsize(d, cities, F("m", 16), w - 24), F("m", 16))
         y += 22
         if s.progress is not None:
@@ -737,26 +785,26 @@ def panel_sky(ctx: Ctx, size):
             y += 14
             if s.eta_min is not None:
                 eta = f"{s.eta_min // 60}h {s.eta_min % 60:02d}m" if s.eta_min >= 60 else f"{s.eta_min} min"
-                text(d, (12, y), f"{eta} to {s.dest_city or s.dest}", F("cm", 15))
+                text(d, (12, y), f"{eta} {L('to', 'até')} {s.dest_city or s.dest}", F("cm", 15))
                 y += 18
     else:
         f = F("b", 38)
-        text(d, (12, y - 4), s.callsign or "Unknown", f)
+        text(d, (12, y - 4), s.callsign or L("Unknown", "Desconhecido"), f)
         y += 46
-        text(d, (12, y), "Route unknown", F("m", 16))
+        text(d, (12, y), L("Route unknown", "Rota desconhecida"), F("m", 16))
         y += 24
     # bottom block: type, altitude, where to look
     by = h - 48
     d.line((10, by - 4, w - 10, by - 4), fill=INK, width=1)
-    alt = f"{s.alt_ft:,} ft" if s.alt_ft else "ground"
-    text(d, (12, by), ellipsize(d, s.aircraft or "Aircraft", F("sb", 17), w - 80), F("sb", 17))
-    dist = f"{s.dist_nm * 1.852:.1f} km" if ctx.cfg.get("units") == "C" else f"{s.dist_nm * 1.15078:.1f} mi"
+    alt = f"{sources.fmt(s.alt_ft, 0)} ft" if s.alt_ft else L("ground", "no solo")
+    text(d, (12, by), ellipsize(d, s.aircraft or L("Aircraft", "Aeronave"), F("sb", 17), w - 80), F("sb", 17))
+    dist = f"{sources.fmt(s.dist_nm * 1.852, 1)} km" if ctx.cfg.get("units") == "C" else f"{sources.fmt(s.dist_nm * 1.15078, 1)} mi"
     text(d, (12, by + 21), f"{alt} · {s.speed_kt:.0f} kt · {dist}", F("cm", 16))
     from adsb import compass
     compass_arrow(c, w - 34, by + 20, 21, s.bearing)
-    look = f"look {compass(s.bearing)}"
+    look = f"{L('look', 'olhe')} {cdir(compass(s.bearing))}"
     text(d, (w - 62, by + 3), look, F("csb", 16), anchor="ra")
-    text(d, (w - 62, by + 22), f"{s.elev_deg:.0f}° up", F("cm", 15), anchor="ra")
+    text(d, (w - 62, by + 22), f"{s.elev_deg:.0f}° {L('up', 'acima')}", F("cm", 15), anchor="ra")
     return c
 
 
@@ -794,18 +842,19 @@ def _quiet_sky(c, d, ctx, size):
     radius = ctx.cfg.get("radar_nm", 25)
     _radar(c, d, 80, h / 2 + 6, 66, _blips(ctx), radius)
     x = 168
-    text(d, (x, 14), "QUIET SKY", F("cb", 24))
+    text(d, (x, 14), L("QUIET SKY", "CÉU CALMO"), F("cb", 24))
     n = len(_blips(ctx))
-    text(d, (x, 44), f"{n} plane{'s' if n != 1 else ''} within {radius} nm", F("m", 16))
-    text(d, (x, 66), f"{ctx.day_count} flew over today", F("m", 16))
+    text(d, (x, 44), L(f"{n} plane{'s' if n != 1 else ''} within {radius} nm",
+                       f"{n} {'avião' if n == 1 else 'aviões'} num raio de {radius} nm"), F("m", 16))
+    text(d, (x, 66), L(f"{ctx.day_count} flew over today", f"{ctx.day_count} passaram hoje"), F("m", 16))
     y = 96
     if ctx.recent:
-        text(d, (x, y), "LAST OVERHEAD", F("cb", 15))
+        text(d, (x, y), L("LAST OVERHEAD", "ÚLTIMOS POR AQUI"), F("cb", 15))
         y += 20
         for s in ctx.recent[:3]:
             route = f"{s.origin}–{s.dest}" if s.has_route else s.callsign
             text(d, (x, y), ellipsize(d, f"{_flight_label(s)}  {route}", F("sb", 16), w - x - 70), F("sb", 16))
-            text(d, (w - 10, y + 1), ago(s.seen_at).replace(" ago", ""), F("cm", 15), anchor="ra")
+            text(d, (w - 10, y + 1), ago_short(s.seen_at), F("cm", 15), anchor="ra")
             y += 21
     return c
 
@@ -814,20 +863,22 @@ def _event_card(c, d, ctx, size):
     w, h = size
     ev = ctx.event
     mins = max(0, int((ev.start - ctx.now) // 60))
-    head = "SPACE STATION" if ev.kind == "iss" else "ROCKET LAUNCH"
+    head = L("SPACE STATION", "ESTAÇÃO ESPACIAL") if ev.kind == "iss" else L("ROCKET LAUNCH", "LANÇAMENTO")
     d.rectangle((0, 0, w, 30), fill=INK)
     text(d, (12, 15), head, F("cb", 22), fill=PAPER, anchor="lm")
     when_s = tr("now") if ev.start <= ctx.now else ((f"em {mins} min" if pt() else f"in {mins} min") if mins < 90 else hm(ev.start))
     text(d, (w - 12, 15), when_s.upper(), F("cb", 22), fill=PAPER, anchor="rm")
-    text(d, (12, 40), ellipsize(d, ev.title, F("b", 34), w - 110), F("b", 34))
-    text(d, (12, 82), ellipsize(d, ev.subtitle or "", F("m", 17), w - 110), F("m", 17))
+    text(d, (12, 40), ellipsize(d, sky_word(ev.title), F("b", 34), w - 110), F("b", 34))
+    text(d, (12, 82), ellipsize(d, sky_word(ev.subtitle or ""), F("m", 17), w - 110), F("m", 17))
     lines = []
     if ev.where:
-        lines.append(f"Look {ev.where}, {ev.height}".strip(", "))
+        lines.append(f"{L('Look', 'Olhe para')} {cdir(ev.where)}, {sky_word(ev.height)}".strip(", "))
     if ev.kind == "iss" and ev.duration_s:
-        lines.append(f"Visible ~{max(1, ev.duration_s // 60)} min · peaks at {hm(ev.start)}")
+        lines.append(L(f"Visible ~{max(1, ev.duration_s // 60)} min · peaks at {hm(ev.start)}",
+                       f"Visível ~{max(1, ev.duration_s // 60)} min · ápice às {hm(ev.start)}"))
     if ev.kind == "launch":
-        lines.append(f"Liftoff {hm(ev.start)} · {ev.distance_nm:.0f} nm away · {ev.confidence}")
+        lines.append(L(f"Liftoff {hm(ev.start)} · {ev.distance_nm:.0f} nm away · {ev.confidence}",
+                       f"Decolagem {hm(ev.start)} · a {ev.distance_nm:.0f} nm · {sky_word(ev.confidence)}"))
     y = 112
     for ln in lines:
         text(d, (12, y), ellipsize(d, ln, F("sb", 17), w - 110), F("sb", 17))
@@ -875,7 +926,8 @@ def header(ctx: Ctx):
         text(d, (x, HEAD_H / 2), s, f, fill=PAPER, anchor="rm")
     if ctx.notes_new:
         f = F("csb", 17)
-        s = f"{ctx.notes_new} new note{'s' if ctx.notes_new > 1 else ''}"
+        s = L(f"{ctx.notes_new} new note{'s' if ctx.notes_new > 1 else ''}",
+              f"{ctx.notes_new} {'nota nova' if ctx.notes_new == 1 else 'notas novas'}")
         x = 14 + tw(d, date, F("sb", 22)) + 18
         pill(d, x, 8, s, f, fill=PAPER, fg=INK, h=22)
     return c
@@ -908,10 +960,10 @@ def strip(ctx: Ctx):
 def _next_up(ctx):
     for r in ctx.teams:
         if r.live:
-            return f"{r.label} playing now: {r.live.us}–{r.live.them} {r.live.detail}"
+            return f"{r.label} {L('playing now', 'jogando agora')}: {r.live.us}–{r.live.them} {r.live.detail}"
     for r in ctx.teams:
         if r.next and r.next.start - ctx.now < 12 * 3600:
-            return f"{r.label} {when(r.next.start, r.next.time_tbd).lower()} vs {r.next.opp_name}"
+            return f"{r.label} {when(r.next.start, r.next.time_tbd).lower()} {vs_word(r.next.home)}{r.next.opp_name}"
     if ctx.heads:
         return ctx.heads[0].title
     return ""
@@ -955,7 +1007,7 @@ def detail_weather(ctx, size):
         return c
     # 24h chart on the right
     x0, x1, y0, y1 = 430, w - 20, 26, top - 32
-    text(d, (x0, 4), "NEXT 24 HOURS", F("cb", 17))
+    text(d, (x0, 4), L("NEXT 24 HOURS", "PRÓXIMAS 24 HORAS"), F("cb", 17))
     hrs = [hh for hh in wx.hourly if hh[0] >= ctx.now - 1800][:24]
     if len(hrs) > 2:
         temps = [t for _, t, _, _ in hrs]
@@ -977,7 +1029,7 @@ def detail_weather(ctx, size):
             ts, t, pop, code = hrs[i]
             text(d, (X(i), Y(t) - 6), f"{t:.0f}°", F("csb", 15), anchor="md")
             text(d, (X(i), y1 + 3), sources.hour_label(ts), F("cm", 14), anchor="ma")
-        text(d, (x1, 4), "bars: chance of rain", F("cr", 14), anchor="ra")
+        text(d, (x1, 4), L("bars: chance of rain", "barras: chance de chuva"), F("cr", 14), anchor="ra")
     # 5-day strip
     days = wx.days[:5]
     d.line((10, top - 6, w - 10, top - 6), fill=INK, width=2)
@@ -990,7 +1042,7 @@ def detail_weather(ctx, size):
         paste_icon(c, dk, int(x + cw / 2 - 30), top + 30, 60)
         text(d, (x + cw / 2, top + 96), f"{day.hi:.0f}°  {day.lo:.0f}°", F("sb", 24), anchor="ma")
         text(d, (x + cw / 2, top + 126), dn, F("m", 16), anchor="ma")
-        text(d, (x + cw / 2, top + 148), f"{day.pop}% rain · UV {day.uv:.0f}", F("cm", 15), anchor="ma")
+        text(d, (x + cw / 2, top + 148), f"{day.pop}% {L('rain', 'chuva')} · UV {day.uv:.0f}", F("cm", 15), anchor="ma")
         if i:
             d.line((x, top + 4, x, h - 10), fill=INK, width=1)
     return c
@@ -1010,8 +1062,11 @@ def detail_news(ctx, size):
         y += 98
         # the first ticker with trading hours names the session (crypto never closes)
         lead = next((q for q in qs if sources.market(q.symbol) != "crypto"), qs[0])
-        mk = {"b3": "B3", "us": "NYSE", "fx": "FX", "crypto": "Crypto"}[sources.market(lead.symbol)]
-        state = f"{mk} {'open' if lead.state == 'open' else 'closed'}"
+        m = sources.market(lead.symbol)
+        mk = {"b3": "B3", "us": "NYSE", "fx": L("FX", "Câmbio"), "crypto": L("Crypto", "Cripto")}[m]
+        is_open = lead.state == "open"
+        state = f"{mk} " + (L("open", "aberta" if m in ("b3", "us") else "aberto") if is_open
+                            else L("closed", "fechada" if m in ("b3", "us") else "fechado"))
         text(d, (w - 12, y - 8), state, F("cm", 13), anchor="rd")
         d.line((8, y, w - 8, y), fill=INK, width=2)
         y += 8
@@ -1042,7 +1097,7 @@ def detail_sports(ctx, size):
     w, h = size
     teams = ctx.teams
     if not teams:
-        text(d, (w / 2, h / 2), "No games in the next few weeks", F("m", 20), anchor="mm")
+        text(d, (w / 2, h / 2), L("No games in the next few weeks", "Sem jogos nas próximas semanas"), F("m", 20), anchor="mm")
         return c
     n = min(6, len(teams))
     rh = (h - 10) / n
@@ -1058,28 +1113,28 @@ def detail_sports(ctx, size):
         x = 190
         if r.live:
             g = r.live
-            xx = pill(d, x, y + 4, "LIVE", F("cb", 20), h=28) + 10
-            text(d, (xx, y + 2), f"{g.us}–{g.them} " + ("vs " if g.home else "at ") + g.opp_name, F("sb", 24))
+            xx = pill(d, x, y + 4, L("LIVE", "AO VIVO"), F("cb", 20), h=28) + 10
+            text(d, (xx, y + 2), f"{g.us}–{g.them} " + vs_word(g.home) + g.opp_name, F("sb", 24))
             text(d, (x, y + 38), g.detail + (f" · {g.tv}" if g.tv else ""), F("m", 17))
         else:
             if r.last:
                 g = r.last
                 if paste_logo(c, g.opp_logo, x, y + 4, 28, ctx.cfg):
                     x += 36
-                xx = pill(d, x, y + 6, g.result or "–", F("cb", 18), h=24) + 8
-                s = f"{g.us}–{g.them} " + ("vs " if g.home else "at ") + g.opp_name
+                xx = pill(d, x, y + 6, result_word(g.result) or "–", F("cb", 18), h=24) + 8
+                s = f"{g.us}–{g.them} " + vs_word(g.home) + g.opp_name
                 text(d, (xx, y + 4), s, F("sb", 21))
                 dt = day_name(time.localtime(g.start), short=True) + " " + day_month(time.localtime(g.start))
                 if g.ats and ctx.cfg.get("odds", True) and g.odds.spread_us is not None and _sport(r) not in ("hockey", "baseball"):
-                    dt += f" · {g.ats} {g.odds.spread_us:+g}"
+                    dt += f" · {ats_word(g.ats)} {g.odds.spread_us:+g}"
                 text(d, (xx, y + 30), dt, F("cm", 16))
             if r.next:
                 g = r.next
                 nx = 500
-                text(d, (nx, y + 4), "NEXT", F("cb", 15))
+                text(d, (nx, y + 4), L("NEXT", "PRÓXIMO"), F("cb", 15))
                 if paste_logo(c, g.opp_logo, w - 12 - 28, y + 2, 28, ctx.cfg):
                     pass
-                s = when(g.start, g.time_tbd) + (" vs " if g.home else " at ") + g.opp_name
+                s = when(g.start, g.time_tbd) + " " + vs_word(g.home) + g.opp_name
                 text(d, (nx, y + 22), ellipsize(d, s, F("sb", 19), w - nx - 12), F("sb", 19))
                 sub = " · ".join(b for b in (g.note, g.tv) if b)
                 ob = _odds_bits(g, g.abbr, ctx.cfg, _sport(r), full=True)
@@ -1112,7 +1167,7 @@ def detail_sky(ctx, size):
     c.paste(right, (x, 0))
     y = 214
     d.line((x, y - 4, w - 10, y - 4), fill=INK, width=2)
-    text(d, (x + 8, y), f"LOGBOOK · {ctx.day_count} TODAY", F("cb", 17))
+    text(d, (x + 8, y), L(f"LOGBOOK · {ctx.day_count} TODAY", f"DIÁRIO DE BORDO · {ctx.day_count} HOJE"), F("cb", 17))
     y += 24
     for s in ctx.recent[:max(6, (h - 262) // 22)]:
         route = f"{s.origin}–{s.dest}" if s.has_route else ""
@@ -1136,9 +1191,10 @@ def compose_page(ctx: Ctx, name: str) -> Image.Image:
     c.paste(header(ctx), (0, 0))
     # the strip becomes a page title bar with position dots
     s, d = canvas((W, STRIP_H))
-    titles = {"weather": "Weather", "news": "News & markets", "sports": "Scores & schedule", "sky": "Sky above"}
+    titles = ({"weather": "Clima", "news": "Notícias e mercado", "sports": "Placar e agenda", "sky": "Céu"} if pt() else
+              {"weather": "Weather", "news": "News & markets", "sports": "Scores & schedule", "sky": "Sky above"})
     text(d, (14, STRIP_H / 2 - 1), titles.get(name, name).upper(), F("cb", 19), anchor="lm")
-    text(d, (W - 14, STRIP_H / 2 - 1), NAV_HINT, F("cm", 15), anchor="rm")
+    text(d, (W - 14, STRIP_H / 2 - 1), NAV_HINT_PT if pt() else NAV_HINT, F("cm", 15), anchor="rm")
     d.line((0, STRIP_H - 1, W, STRIP_H - 1), fill=INK, width=2)
     c.paste(s, (0, HEAD_H))
     c.paste(DETAILS[name](ctx, BODY), (0, GRID_Y))
