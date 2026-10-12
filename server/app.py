@@ -85,10 +85,13 @@ DEFAULTS = {
     "odds_style": "spread",      # spread | moneyline | winpct (hockey/baseball always moneyline)
     "radar_nm": 25,
     "iss": True, "launch": True,
-    "llm_brief": bool(shutil.which("claude")),   # needs the claude CLI; off where it isn't installed (Docker)
+    # needs the claude CLI and a login; on by default only where both exist
+    "llm_brief": bool(shutil.which("claude")) and bool(
+        os.environ.get("CLAUDE_CODE_OAUTH_TOKEN") or os.environ.get("ANTHROPIC_API_KEY")
+        or os.path.exists(os.path.expanduser("~/.claude/.credentials.json"))),
     "llm_brief_min": 60,
     "brief_lang": "Brazilian Portuguese",
-    "llm_model": "claude-haiku-4-5-20251001",
+    "llm_model": "haiku",        # Claude Code alias: always the current Haiku
     "page_timeout_s": 180,       # detail pages fall back to the quad after this
     "notes": True,               # show note-box notes when they arrive (needs QUAD_NOTES_DB)
     "note_minutes": 10,
