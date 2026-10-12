@@ -1,13 +1,23 @@
 # Quad Board server. Build from the repo root:  docker build -t kindle-quad-pw .
+
+# Node comes from the official image rather than Debian's nodejs/npm, whose
+# few hundred dependencies made apt the fragile step of the build.
+FROM node:22-slim AS node
+
 FROM python:3.12-slim
 
-# tzdata: TZ=America/Sao_Paulo needs the zone files the slim image leaves out.
+# tzdata: TZ=America/Sao_Paulo needs the zone files the slim image leaves out
+RUN apt-get update && apt-get install -y --no-install-recommends tzdata \
+    && rm -rf /var/lib/apt/lists/*
+
 # Node + Claude Code: the CLI behind the one-line brief (sources.brief runs
 # `claude -p`); it authenticates with CLAUDE_CODE_OAUTH_TOKEN from .env.
-RUN apt-get update && apt-get install -y --no-install-recommends tzdata nodejs npm \
+COPY --from=node /usr/local/bin/node /usr/local/bin/node
+COPY --from=node /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm
+RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+    && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
     && npm install -g @anthropic-ai/claude-code \
-    && npm cache clean --force \
-    && rm -rf /var/lib/apt/lists/*
+    && npm cache clean --force
 
 WORKDIR /app/server
 COPY server/requirements.txt .
