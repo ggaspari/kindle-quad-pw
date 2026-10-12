@@ -3,6 +3,7 @@
 # The server, plain HTTP: the Kindle's old wget can't do modern TLS, so keep
 # this on your LAN (QUAD_BIND=0.0.0.0 on the server, or an nginx/Caddy that
 # also listens on plain http).
+# Use the server's IP, not casaos.local: the Kindle can't resolve .local names.
 SERVER=http://192.168.1.10:8740
 TOKEN=change-me            # the server's QUAD_TOKEN
 
