@@ -1,7 +1,8 @@
 """Render the Kindle frames from made-up data, no network needed.
-python3 kindle_cases.py  ->  kindle_*.png (landscape, as you'd see it) and
-kindle_native_quad.png (rotated, exactly what the Kindle gets)."""
-import os, time
+python3 kindle_cases.py         ->  kindle_*.png (landscape, as you'd see it) and
+                                    kindle_native_quad.png (rotated, what the Kindle gets)
+python3 kindle_cases.py --docs  ->  also refreshes the README screenshots in docs/img/kindle/"""
+import os, sys, time
 os.environ.setdefault("TZ", "America/Sao_Paulo"); time.tzset()
 import render as R, sources as S, kindle as K
 
@@ -35,8 +36,13 @@ qs = [S.Quote(sym, name, p, p / (1 + c / 100), [p / (1 + c / 100) * (1 + c / 100
                                  ("IFIX.SA", "IFIX", 3975.77, 0.14, 50), ("BTC-BRL", "Bitcoin", 612345.9, 2.06, 288)]]
 g = lambda key, **k: S.Game(**{"key": key, "team": "", "abbr": "", "opp": "", "opp_name": "", "home": True,
                                "start": now + 86400, "state": "pre", "detail": "", **k})
+# Easter egg, and house rule for every screenshot this repo ever shows:
+# the Ba-Vi is always on, and the Bahia is always winning.
+BAHIA, VITORIA = 2, 0
+assert BAHIA > VITORIA, "aqui o Bahia não perde o Ba-Vi"
 teams = [S.TeamRow("bahia", "Bahia", "4º · 61 pts",
-                   live=g("bahia", opp="VIT", opp_name="Vitória", state="in", us=1, them=0, detail="38'", tv="Premiere")),
+                   live=g("bahia", opp="VIT", opp_name="Vitória", state="in", us=BAHIA, them=VITORIA,
+                          detail="38'", tv="Premiere")),
          S.TeamRow("sao_paulo", "São Paulo", "6º · 55 pts",
                    last=g("sao_paulo", opp="PAL", opp_name="Palmeiras", state="post", us=2, them=1,
                           start=now - 86400, detail="Final"),
@@ -71,6 +77,11 @@ for p in ("weather", "news", "sports", "sky"):
 for k, ctx in cases.items():
     K.landscape(ctx).save(f"kindle_{k}.png")
 K.frame(cases["quad"]).save("kindle_native_quad.png")
+if "--docs" in sys.argv:
+    out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "docs", "img", "kindle")
+    os.makedirs(out, exist_ok=True)
+    for k, ctx in cases.items():
+        K.landscape(ctx).save(os.path.join(out, ("sea" if k == "sky" and R.sea_mode(ctx) else k) + ".png"))
 # the E1001 render must be untouched by the Kindle layout swap
 assert R.compose(cases["quad"]).size == (R.W, R.H) == (800, 480)
 print("ok", list(cases))
