@@ -109,6 +109,7 @@ class Weather:
 
 
 def _fetch_weather(lat, lon, units="fahrenheit"):
+    # Open-Meteo is global and keyless; metric temperature gets km/h wind
     r = requests.get("https://api.open-meteo.com/v1/forecast", params={
         "latitude": lat, "longitude": lon,
         "current": "temperature_2m,apparent_temperature,weather_code,is_day,relative_humidity_2m,"
@@ -117,7 +118,7 @@ def _fetch_weather(lat, lon, units="fahrenheit"):
                  "sunrise,sunset,uv_index_max",
         "hourly": "temperature_2m,precipitation_probability,weather_code",
         "minutely_15": "precipitation",
-        "temperature_unit": units, "wind_speed_unit": "mph",
+        "temperature_unit": units, "wind_speed_unit": "kmh" if units == "celsius" else "mph",
         "timezone": "auto", "forecast_days": 5, "timeformat": "unixtime",
     }, headers={"User-Agent": UA_BOT}, timeout=10)
     r.raise_for_status()
@@ -157,7 +158,7 @@ def _fetch_weather(lat, lon, units="fahrenheit"):
                    days=days, hourly=hourly, rain_note=rain_note, fetched=time.time())
 
 
-def _fetch_alerts(lat, lon):
+def _fetch_alerts_nws(lat, lon):
     r = requests.get(f"https://api.weather.gov/alerts/active?point={lat:.4f},{lon:.4f}",
                      headers={"User-Agent": UA_BOT + " contact: " + os.environ.get("QUAD_CONTACT", "unset"),
                               "Accept": "application/geo+json"}, timeout=10)
@@ -169,6 +170,136 @@ def _fetch_alerts(lat, lon):
         out.append((p.get("event", ""), p.get("headline", ""), p.get("severity", "")))
     out.sort(key=lambda a: rank.get(a[2], 9))
     return out
+
+
+# INMET (Brazil's met service) publishes its "avisos meteorológicos" as one
+# national list, {"hoje": [...], "futuro": [...]}, each with the area as a
+# polygon. Keyless; INMET only answers Brazilian IPs. The field names aren't
+# documented, so the parser below looks for the likely ones and logs the keys
+# it saw when it can't place an alert.
+INMET_URL = "https://apiprevmet3.inmet.gov.br/avisos/ativos"
+INMET_SEV = {"grande perigo": "Extreme", "perigo": "Severe", "perigo potencial": "Moderate"}
+
+
+def _pick(d, *keys):
+    for k in keys:
+        v = d.get(k)
+        if v not in (None, "", []):
+            return v
+    return None
+
+
+def _rings(g):
+    """Polygon rings ([(lon, lat), ...]) from GeoJSON (string, geometry,
+    Feature, FeatureCollection) or a bare list of [lon, lat] pairs."""
+    if isinstance(g, str):
+        try:
+            g = json.loads(g)
+        except ValueError:
+            return []
+    if isinstance(g, list):
+        if g and isinstance(g[0], (list, tuple)) and len(g[0]) == 2 and isinstance(g[0][0], (int, float)):
+            return [[(float(a), float(b)) for a, b in g]]
+        return [r for x in g for r in _rings(x)]
+    if not isinstance(g, dict):
+        return []
+    t = g.get("type")
+    if t == "FeatureCollection":
+        return [r for f in g.get("features", []) for r in _rings(f)]
+    if t == "Feature":
+        return _rings(g.get("geometry"))
+    c = g.get("coordinates")
+    if t == "Polygon" and c:
+        return [[(float(p[0]), float(p[1])) for p in c[0]]]
+    if t == "MultiPolygon" and c:
+        return [[(float(p[0]), float(p[1])) for p in poly[0]] for poly in c]
+    return []
+
+
+def _inside(lat, lon, ring):
+    """Ray casting; ring is [(lon, lat), ...]."""
+    hit = False
+    j = len(ring) - 1
+    for i in range(len(ring)):
+        xi, yi = ring[i]
+        xj, yj = ring[j]
+        if (yi > lat) != (yj > lat) and lon < (xj - xi) * (lat - yi) / (yj - yi) + xi:
+            hit = not hit
+        j = i
+    return hit
+
+
+def _inmet_when(a, which):
+    """'fim'/'inicio' as epoch, from either a full timestamp or data_* + hora_*."""
+    v = _pick(a, which, f"data_{which}", f"{which}_data")
+    if not v:
+        return None
+    v = str(v).strip()
+    h = _pick(a, f"hora_{which}", f"{which}_hora")
+    if h and len(v) <= 10:
+        v = f"{v} {h}"
+    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M", "%Y-%m-%d",
+                "%d/%m/%Y %H:%M", "%d/%m/%Y"):
+        try:
+            return time.mktime(time.strptime(v[:19].replace(".000", ""), fmt))
+        except ValueError:
+            continue
+    return None
+
+
+_inmet_logged = False
+
+
+def _parse_inmet(d, lat, lon, geocode="", now=None):
+    global _inmet_logged
+    now = now or time.time()
+    items = (d.get("hoje") or []) + (d.get("futuro") or []) if isinstance(d, dict) else (d or [])
+    out = []
+    for a in items:
+        if not isinstance(a, dict):
+            continue
+        rings = _rings(_pick(a, "poligono", "polygon", "geometry", "geojson", "area") or [])
+        codes = str(_pick(a, "geocodes", "geocode", "municipios", "cod_ibge") or "")
+        here = any(_inside(lat, lon, r) for r in rings) or (bool(geocode) and str(geocode) in codes)
+        if not here:
+            if not rings and not codes and not _inmet_logged:
+                _inmet_logged = True
+                print(f"[inmet] can't place an alert; keys: {sorted(a)}", flush=True)
+            continue
+        start, end = _inmet_when(a, "inicio"), _inmet_when(a, "fim")
+        if end and end < now:
+            continue
+        if start and start - now > 6 * 3600:      # "futuro": only once it's close
+            continue
+        sev_pt = str(_pick(a, "severidade", "severity", "nivel") or "").strip()
+        event = str(_pick(a, "descricao", "evento", "event", "titulo") or "Aviso").strip()
+        hm24 = lambda t: time.strftime("%H:%M", time.localtime(t))   # pt-BR text, 24h clock
+        until = f" até {hm24(end)}" if end else ""
+        soon = f" a partir de {hm24(start)}" if start and start > now else ""
+        out.append((event, f"INMET: {event} ({sev_pt or 'aviso'}){soon}{until}",
+                    INMET_SEV.get(sev_pt.lower(), "Moderate")))
+    rank = {"Extreme": 0, "Severe": 1, "Moderate": 2, "Minor": 3}
+    out.sort(key=lambda a: rank.get(a[2], 9))
+    return out
+
+
+def _fetch_alerts_inmet(lat, lon, geocode=""):
+    r = requests.get(INMET_URL, headers={"User-Agent": UA_BOT, "Accept": "application/json"}, timeout=15)
+    r.raise_for_status()
+    return _parse_inmet(r.json(), lat, lon, geocode)
+
+
+def alert_source(cfg):
+    """auto: NWS inside the US, INMET inside Brazil, nothing elsewhere."""
+    src = cfg.get("alerts", "auto")
+    if src != "auto":
+        return src
+    lat, lon = cfg["lat"], cfg["lon"]
+    if 18 <= lat <= 72 and -170 <= lon <= -65:
+        return "nws"
+    if -34 <= lat <= 5.5 and -74 <= lon <= -34:
+        return "inmet"
+    return "off"
 
 
 def _hm(epoch):
@@ -189,8 +320,14 @@ def weather(cfg, force=False) -> Weather | None:
     def fetch_weather():
         return _fetch_weather(lat, lon, units)
 
+    src = alert_source(cfg)
+
     def fetch_alerts():
-        return _fetch_alerts(lat, lon)
+        if src == "nws":
+            return _fetch_alerts_nws(lat, lon)
+        if src == "inmet":
+            return _fetch_alerts_inmet(lat, lon, cfg.get("alert_geocode", ""))
+        return []
 
     w = _weather.get(fetch_weather, force)
     a = _alerts.get(fetch_alerts, force)
@@ -338,7 +475,12 @@ def _fetch_quotes(syms):
 
 
 def _us_market_open(now):
-    t = time.localtime(now)   # TZ is America/New_York (set by app.py)
+    try:      # NYSE hours, whatever the server's own TZ is
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        t = datetime.fromtimestamp(now, ZoneInfo("America/New_York")).timetuple()
+    except Exception:
+        t = time.localtime(now)
     mins = t.tm_hour * 60 + t.tm_min
     return t.tm_wday < 5 and 570 <= mins < 960
 
