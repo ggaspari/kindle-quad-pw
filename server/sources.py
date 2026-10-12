@@ -348,18 +348,31 @@ def weather(cfg, force=False) -> Weather | None:
 
 # ============================================================ news
 
-WSJ_FEEDS = {
-    "world": ("World", "https://feeds.content.dowjones.io/public/rss/RSSWorldNews"),
-    "us": ("U.S.", "https://feeds.content.dowjones.io/public/rss/RSSUSnews"),
-    "markets": ("Markets", "https://feeds.content.dowjones.io/public/rss/RSSMarketsMain"),
-    "tech": ("Tech", "https://feeds.content.dowjones.io/public/rss/RSSWSJD"),
-    "business": ("Business", "https://feeds.content.dowjones.io/public/rss/WSJcomUSBusiness"),
-    "politics": ("Politics", "https://feeds.content.dowjones.io/public/rss/socialpoliticsfeed"),
-    "opinion": ("Opinion", "https://feeds.content.dowjones.io/public/rss/RSSOpinion"),
+# key -> (label, url). Brazilian feeds first; the WSJ ones keep their old
+# keys so an existing config.json still works.
+FEEDS = {
+    "g1": ("g1", "https://g1.globo.com/rss/g1/"),
+    "g1_economia": ("g1 Economia", "https://g1.globo.com/rss/g1/economia/"),
+    "g1_politica": ("g1 Política", "https://g1.globo.com/rss/g1/politica/"),
+    "g1_mundo": ("g1 Mundo", "https://g1.globo.com/rss/g1/mundo/"),
+    "g1_tecnologia": ("g1 Tecnologia", "https://g1.globo.com/rss/g1/tecnologia/"),
+    "agencia_brasil": ("Agência Brasil", "https://agenciabrasil.ebc.com.br/rss/ultimasnoticias/feed.xml"),
+    "agencia_brasil_economia": ("Agência Brasil Economia", "https://agenciabrasil.ebc.com.br/rss/economia/feed.xml"),
+    "folha": ("Folha", "https://feeds.folha.uol.com.br/emcimadahora/rss091.xml"),
+    "bbc_brasil": ("BBC News Brasil", "https://feeds.bbci.co.uk/portuguese/rss.xml"),
+    "world": ("WSJ World", "https://feeds.content.dowjones.io/public/rss/RSSWorldNews"),
+    "us": ("WSJ U.S.", "https://feeds.content.dowjones.io/public/rss/RSSUSnews"),
+    "markets": ("WSJ Markets", "https://feeds.content.dowjones.io/public/rss/RSSMarketsMain"),
+    "tech": ("WSJ Tech", "https://feeds.content.dowjones.io/public/rss/RSSWSJD"),
+    "business": ("WSJ Business", "https://feeds.content.dowjones.io/public/rss/WSJcomUSBusiness"),
+    "politics": ("WSJ Politics", "https://feeds.content.dowjones.io/public/rss/socialpoliticsfeed"),
+    "opinion": ("WSJ Opinion", "https://feeds.content.dowjones.io/public/rss/RSSOpinion"),
 }
+WSJ_FEEDS = FEEDS     # old name
 
 
-JUNK = re.compile(r"Roundup: Market Talk|^Best .*(Accounts|Rates|Cards)|Savings Accounts|CD Rates|Mortgage Rates Today|^WSJ (News|Podcast)|^The Journal\.|Crossword|^Opinion \|", re.I)
+JUNK = re.compile(r"Roundup: Market Talk|^Best .*(Accounts|Rates|Cards)|Savings Accounts|CD Rates|Mortgage Rates Today|^WSJ (News|Podcast)|^The Journal\.|Crossword|^Opinion \|"
+                  r"|^V[ÍI]DEOS?\b|^AO VIVO\b|^PODCAST\b|Hor[óo]scopo|Mega-Sena|Lotof[áa]cil|\bQuina\b|Lotomania|Dupla Sena|Timemania|Dia de Sorte|Super Sete|\+Milion[áa]ria", re.I)
 
 
 @dataclass
@@ -376,24 +389,55 @@ def _clean(s):
     return re.sub(r"\s+", " ", s)
 
 
-def _fetch_feed(key):
-    label, url = WSJ_FEEDS[key]
-    r = requests.get(url, headers={"User-Agent": UA_BROWSER}, timeout=10)
-    r.raise_for_status()
-    root = ET.fromstring(r.content)
+def _when(s):
+    """RFC 822 (RSS) or ISO 8601 (Atom, some Brazilian feeds) -> epoch, 0 if unknown."""
+    s = (s or "").strip()
+    if not s:
+        return 0
+    try:
+        return email.utils.parsedate_to_datetime(s).timestamp()
+    except Exception:
+        pass
+    try:
+        from datetime import datetime
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        return dt.timestamp() if dt.tzinfo else time.mktime(dt.timetuple())
+    except Exception:
+        return 0
+
+
+ATOM = "{http://www.w3.org/2005/Atom}"
+
+
+def _parse_feed(content, label):
+    """RSS 0.91/2.0 or Atom -> [Headline]. ElementTree honours the XML
+    declaration's encoding (Folha still serves ISO-8859-1)."""
+    root = ET.fromstring(content)
     out = []
-    for it in root.iter("item"):
-        title = _clean(it.findtext("title"))
+    for it in list(root.iter("item")) + list(root.iter(ATOM + "entry")):
+        atom = it.tag.startswith(ATOM)
+        f = (lambda t: it.findtext(ATOM + t)) if atom else it.findtext
+        title = _clean(f("title"))
         if not title or JUNK.search(title):
             continue
-        try:
-            pub = email.utils.parsedate_to_datetime(it.findtext("pubDate")).timestamp()
-        except Exception:
-            pub = 0
+        pub = _when(f("updated") or f("published")) if atom else \
+            _when(f("pubDate") or it.findtext("{http://purl.org/dc/elements/1.1/}date"))
+        link = ""
+        if atom:
+            ln = it.find(ATOM + "link")
+            link = ln.get("href", "") if ln is not None else ""
+        else:
+            link = (f("link") or "").strip()
         out.append(Headline(title=title, section=label, published=pub,
-                            summary=_clean(it.findtext("description"))[:300],
-                            link=(it.findtext("link") or "").strip()))
+                            summary=_clean(f("summary") if atom else f("description"))[:300], link=link))
     return out
+
+
+def _fetch_feed(key):
+    label, url = FEEDS[key]
+    r = requests.get(url, headers={"User-Agent": UA_BROWSER}, timeout=10)
+    r.raise_for_status()
+    return _parse_feed(r.content, label)
 
 
 _feeds: dict[str, Cached] = {}
@@ -402,8 +446,8 @@ _feeds: dict[str, Cached] = {}
 def headlines(cfg, force=False) -> list[Headline]:
     """Newest first across the chosen feeds, de-duplicated, within max_age_h."""
     items = []
-    for key in cfg.get("feeds", ["world", "us", "markets"]):
-        if key not in WSJ_FEEDS:
+    for key in cfg.get("feeds", ["g1", "g1_economia", "agencia_brasil"]):
+        if key not in FEEDS:
             continue
         c = _feeds.setdefault(key, Cached(900))
 
@@ -1023,7 +1067,8 @@ def brief(cfg, heads, wx, games, force=False) -> str:
             f"It is {time.strftime('%A ' + ('%H:%M' if CLOCK24 else '%I:%M %p'))}. Using ONLY the facts below, write ONE plain sentence, "
             "max 115 characters, no emoji, no quotes, no preamble. Lead with what matters most today: "
             "severe weather beats everything; then a local team playing today/tonight; otherwise the most "
-            "consequential news story. Don't restate routine weather unless rain or heat is notable.\n\n"
+            "consequential news story. Don't restate routine weather unless rain or heat is notable. "
+            f"Write it in {cfg.get('brief_lang') or 'English'}.\n\n"
             f"{w}\nSports: {g}\nHeadlines:\n" + "\n".join(lines))
         env = dict(os.environ)
         out = subprocess.run(

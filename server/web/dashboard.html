@@ -150,6 +150,7 @@ td:first-child{font-weight:600;white-space:nowrap}
       <div class="grid2" style="margin-top:8px">
         <label>Rewrite every (min)<input type="number" name="llm_brief_min" min="15" max="720"></label>
         <label>Model<input name="llm_model"></label>
+        <label>Brief language<input name="brief_lang" placeholder="Brazilian Portuguese"></label>
       </div>
       <div class="brief" id="briefText"></div>
       <button type="button" class="ghost" onclick="act({action:'brief'})">Regenerate brief now</button>
@@ -252,7 +253,7 @@ function fillForm(cfg) {
       box.appendChild(l);
     }
   };
-  mk('feeds', Object.fromEntries(Object.entries(S.feeds).map(([k,v]) => [k, 'WSJ ' + v])), cfg.feeds, 'feeds');
+  mk('feeds', S.feeds, cfg.feeds, 'feeds');
   mk('teams', S.teams, cfg.teams, 'teams');
 }
 
@@ -317,7 +318,7 @@ function render() {
   const src = S.sources;
   const st = (o) => o ? (o.error ? `<span style="color:var(--bad)">${o.error}</span> (last ok ${ago(o.age_s)})` : `ok · ${ago(o.age_s)}`) : '—';
   rows.push(['Weather', st(src.weather)], ['Alerts (' + (S.cfg.alerts || 'auto') + ')', st(src.alerts)], ['Quotes', st(src.quotes)]);
-  for (const [k, v] of Object.entries(src.news)) rows.push(['WSJ ' + (S.feeds[k] || k), st(v)]);
+  for (const [k, v] of Object.entries(src.news)) rows.push([S.feeds[k] || k, st(v)]);
   for (const [k, v] of Object.entries(src.sports)) rows.push([S.teams[k] || k, st(v)]);
   rows.push(['Plane feed', st(src.sky)], ['Claude brief', st(src.brief)]);
   if (src.events && src.events.upcoming && src.events.upcoming.length)
