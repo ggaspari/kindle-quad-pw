@@ -2,7 +2,7 @@
 
 O mesmo painel, num Kindle Paperwhite original (PW1, 2012) deitado em paisagem. O servidor desenha tudo em **16 tons de cinza** a 1024×758 e já gira a imagem para o framebuffer de 758×1024. O Kindle só baixa o PNG e mostra.
 
-![Quad no Kindle](../docs/img/kindle-quad.png)
+![Quad no Kindle](../docs/img/kindle/quad.png)
 
 | Toque | Faz |
 |---|---|

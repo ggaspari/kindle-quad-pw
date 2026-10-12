@@ -2,7 +2,7 @@
 
 Um Kindle Paperwhite antigo, com jailbreak, vira um painel de cozinha: deitado de lado, ele mostra num relance o clima de Salvador, as notícias e o mercado, os jogos do Brasileirão e a maré. Tudo em 16 tons de cinza, atualizando sozinho e trocando de página com um toque.
 
-![O painel no Kindle Paperwhite](docs/img/kindle-quad.png)
+![O painel no Kindle Paperwhite](docs/img/kindle/quad.png)
 
 ## O que aparece
 
@@ -19,8 +19,8 @@ Cada canto tem uma página de detalhe:
 
 | | |
 |---|---|
-| ![Clima](docs/img/kindle-weather.png) | ![Notícias e mercado](docs/img/kindle-news.png) |
-| ![Placar e agenda](docs/img/kindle-sports.png) | ![Mar e marés](docs/img/kindle-sea.png) |
+| ![Clima](docs/img/kindle/weather.png) | ![Notícias e mercado](docs/img/kindle/news.png) |
+| ![Placar e agenda](docs/img/kindle/sports.png) | ![Mar e marés](docs/img/kindle/sea.png) |
 
 ### Toque
 
@@ -95,7 +95,7 @@ Os padrões já vêm para Salvador:
 
 Para outro time, acrescente no `config.json` com o id da ESPN, que aparece na URL do clube em espn.com.br. Por exemplo, `"custom_teams": {"flamengo": ["Flamengo", "soccer", "bra.1", "819"]}`, e depois `flamengo` na lista `teams`.
 
-**Prévia sem hardware:** `cd server && python kindle_cases.py` gera todas as telas do Kindle com dados de exemplo (`kindle_*.png`).
+**Prévia sem hardware:** `cd server && python kindle_cases.py` gera todas as telas do Kindle com dados de exemplo (`kindle_*.png`); com `--docs`, atualiza também as imagens deste README. Nos exemplos, o Bahia está sempre ganhando o Ba-Vi.
 
 ## Fontes de dados
 
