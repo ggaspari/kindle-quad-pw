@@ -55,6 +55,7 @@ DEFAULTS = {
     "lat": 27.9506, "lon": -82.4572,
     "units": "C",                # C = °C and km/h; F = °F and mph
     "clock": "24",               # 24 | 12
+    "lang": "pt",                # dates and times: pt | en
     "alerts": "auto",            # auto (NWS in the US, INMET in Brazil) | nws | inmet | off
     "alert_geocode": "",         # optional IBGE city code, for INMET alerts without a polygon
     "slots": ["weather", "news", "sports", "sky"],
@@ -122,6 +123,7 @@ def save_json(path, obj):
 
 cfg = {**DEFAULTS, **load_json(CONFIG_PATH, {})}
 S.CLOCK24 = cfg.get("clock") != "12"
+S.LANG = "en" if cfg.get("lang") == "en" else "pt"
 S.DECIMAL_COMMA = cfg.get("number_format") != "us"
 S.TEAMS.update({k: tuple(v) for k, v in cfg.get("custom_teams", {}).items()})
 
@@ -677,6 +679,7 @@ class H(BaseHTTPRequestHandler):
         cfg.clear()
         cfg.update(new)
         S.CLOCK24 = cfg.get("clock") != "12"
+        S.LANG = "en" if cfg.get("lang") == "en" else "pt"
         S.DECIMAL_COMMA = cfg.get("number_format") != "us"
         S.TEAMS.update({k: tuple(v) for k, v in cfg.get("custom_teams", {}).items()})
         save_json(CONFIG_PATH, {k: v for k, v in cfg.items() if DEFAULTS.get(k) != v})

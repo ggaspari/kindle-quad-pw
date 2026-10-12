@@ -269,29 +269,66 @@ def hm(ts, ampm=True):
     return s + (" AM" if t.tm_hour < 12 else " PM") if ampm else s
 
 
+# Dates in Portuguese without depending on the server having a pt_BR locale
+_DAYS_PT = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"]
+_DAYS_PT_SHORT = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
+_MONTHS_PT = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro",
+              "outubro", "novembro", "dezembro"]
+_WORDS_PT = {"Today": "Hoje", "Tonight": "Hoje", "Tomorrow": "Amanhã", "TODAY": "HOJE", "Updated": "Atualizado",
+             "time TBD": "horário a definir", "now": "agora", "just now": "agora", "plug me in": "carregar",
+             "Inside": "Dentro", "Next": "Próximo"}
+
+
+def pt():
+    return sources.LANG == "pt"
+
+
+def tr(s):
+    """A date/time word in the board's language."""
+    return _WORDS_PT.get(s, s) if pt() else s
+
+
+def day_name(t, short=False):
+    if pt():
+        return (_DAYS_PT_SHORT if short else _DAYS_PT)[t.tm_wday]
+    return time.strftime("%a" if short else "%A", t)
+
+
+def day_month(t):
+    """'12 out' / 'Oct 12'."""
+    return f"{t.tm_mday} {_MONTHS_PT[t.tm_mon - 1][:3]}" if pt() else time.strftime("%b ", t) + str(t.tm_mday)
+
+
+def long_date(t):
+    """Header date: 'Segunda-feira, 12 de outubro' / 'Monday, October 12'."""
+    if pt():
+        return f"{_DAYS_PT[t.tm_wday]}, {t.tm_mday} de {_MONTHS_PT[t.tm_mon - 1]}"
+    return time.strftime("%A, %B ", t) + str(t.tm_mday)
+
+
 def when(ts, tbd=False):
-    """Friendly game time: 'Tonight 19:00', 'Tomorrow 13:00', 'Sun 13:00', 'Oct 12' (or 12h)."""
+    """Friendly game time: 'Hoje 19:00', 'Amanhã 13:00', 'Dom 13:00', '12 out' (or in English)."""
     now = time.localtime()
     t = time.localtime(ts)
     days = (time.mktime(t[:3] + (0, 0, 0, 0, 0, -1)) - time.mktime(now[:3] + (0, 0, 0, 0, 0, -1))) / 86400
     days = round(days)
     clock = "" if tbd else " " + hm(ts)
     if days == 0:
-        return ("Tonight" if t.tm_hour >= 17 else "Today") + (clock if not tbd else " · time TBD")
+        return tr("Tonight" if t.tm_hour >= 17 else "Today") + (clock if not tbd else " · " + tr("time TBD"))
     if days == 1:
-        return "Tomorrow" + clock
+        return tr("Tomorrow") + clock
     if 1 < days < 7:
-        return time.strftime("%a", t) + clock
-    return time.strftime("%b ", t) + str(t.tm_mday) + clock
+        return day_name(t, short=True) + clock
+    return day_month(t) + clock
 
 
 def ago(ts):
     m = int((time.time() - ts) // 60)
     if m < 1:
-        return "just now"
+        return tr("just now")
     if m < 60:
-        return f"{m} min ago"
-    return f"{m // 60}h {m % 60:02d}m ago"
+        return f"há {m} min" if pt() else f"{m} min ago"
+    return f"há {m // 60}h{m % 60:02d}" if pt() else f"{m // 60}h {m % 60:02d}m ago"
 
 
 # ================================================================== panels
@@ -427,7 +464,7 @@ def panel_weather(ctx: Ctx, size):
             x = 10 + i * cw
             t = time.strptime(day.date, "%Y-%m-%d")
             dn, dk = wmo(day.code)
-            text(d, (x + 4, top), time.strftime("%a", t).upper(), F("cb", 18))
+            text(d, (x + 4, top), day_name(t, short=True).upper(), F("cb", 18))
             text(d, (x + cw - 8, top + 2), f"{day.pop}%", F("cm", 16), anchor="ra")
             paste_icon(c, dk, int(x + 4), int(top + 21), 32)
             hs = f"{day.hi:.0f}°"
@@ -457,7 +494,7 @@ def _rain_bars(d, hourly, now, x0, x1, y0, y1):
         if hgt >= 1:
             d.rectangle((bx + 1, by1 - hgt, bx + cw - 2, by1), fill=INK)
         if i % 3 == 0:
-            lab = "now" if i == 0 else sources.hour_label(ts)
+            lab = tr("now") if i == 0 else sources.hour_label(ts)
             text(d, (bx + 1, by1 + 1), lab, fl)
     pk = hrs[peak][2]
     if pk >= 10:
@@ -780,7 +817,7 @@ def _event_card(c, d, ctx, size):
     head = "SPACE STATION" if ev.kind == "iss" else "ROCKET LAUNCH"
     d.rectangle((0, 0, w, 30), fill=INK)
     text(d, (12, 15), head, F("cb", 22), fill=PAPER, anchor="lm")
-    when_s = "now" if ev.start <= ctx.now else (f"in {mins} min" if mins < 90 else hm(ev.start))
+    when_s = tr("now") if ev.start <= ctx.now else ((f"em {mins} min" if pt() else f"in {mins} min") if mins < 90 else hm(ev.start))
     text(d, (w - 12, 15), when_s.upper(), F("cb", 22), fill=PAPER, anchor="rm")
     text(d, (12, 40), ellipsize(d, ev.title, F("b", 34), w - 110), F("b", 34))
     text(d, (12, 82), ellipsize(d, ev.subtitle or "", F("m", 17), w - 110), F("m", 17))
@@ -808,19 +845,19 @@ def header(ctx: Ctx):
     c, d = canvas((W, HEAD_H))
     d.rectangle((0, 0, W, HEAD_H), fill=INK)
     t = time.localtime(ctx.now)
-    date = time.strftime("%A, %B ", t) + str(t.tm_mday)
+    date = long_date(t)
     text(d, (14, HEAD_H / 2), date, F("sb", 22), fill=PAPER, anchor="lm")
     # right side, laid out right-to-left: updated time, battery, indoor
     f = F("m", 17)
     sep = "   ·   "
     x = W - 14
-    s = f"Updated {hm(ctx.updated or ctx.now)}"
+    s = f"{tr('Updated')} {hm(ctx.updated or ctx.now)}"
     text(d, (x, HEAD_H / 2), s, f, fill=PAPER, anchor="rm")
     x -= tw(d, s, f)
     if ctx.battery is not None:
         x -= tw(d, sep, f)
         text(d, (x, HEAD_H / 2), sep, f, fill=PAPER, anchor="lm")
-        pct = f"{ctx.battery}%" + ("  plug me in" if ctx.battery <= 20 else "")
+        pct = f"{ctx.battery}%" + ("  " + tr("plug me in") if ctx.battery <= 20 else "")
         x -= tw(d, pct, f)
         text(d, (x, HEAD_H / 2), pct, f, fill=PAPER, anchor="lm")
         # battery glyph: outline, nub, fill proportional to charge
@@ -834,7 +871,7 @@ def header(ctx: Ctx):
     if ctx.indoor_f is not None:
         x -= tw(d, sep, f)
         text(d, (x, HEAD_H / 2), sep, f, fill=PAPER, anchor="lm")
-        s = f"Inside {ctx.indoor_f:.0f}°" + (f" {ctx.indoor_rh:.0f}%" if ctx.indoor_rh is not None else "")
+        s = f"{tr('Inside')} {ctx.indoor_f:.0f}°" + (f" {ctx.indoor_rh:.0f}%" if ctx.indoor_rh is not None else "")
         text(d, (x, HEAD_H / 2), s, f, fill=PAPER, anchor="rm")
     if ctx.notes_new:
         f = F("csb", 17)
@@ -949,7 +986,7 @@ def detail_weather(ctx, size):
         x = 10 + i * cw
         t = time.strptime(day.date, "%Y-%m-%d")
         dn, dk = wmo(day.code)
-        text(d, (x + cw / 2, top + 4), "TODAY" if i == 0 else time.strftime("%A", t).upper(), F("cb", 19), anchor="ma")
+        text(d, (x + cw / 2, top + 4), tr("TODAY") if i == 0 else day_name(t).split("-")[0].upper(), F("cb", 19), anchor="ma")
         paste_icon(c, dk, int(x + cw / 2 - 30), top + 30, 60)
         text(d, (x + cw / 2, top + 96), f"{day.hi:.0f}°  {day.lo:.0f}°", F("sb", 24), anchor="ma")
         text(d, (x + cw / 2, top + 126), dn, F("m", 16), anchor="ma")
@@ -1032,7 +1069,7 @@ def detail_sports(ctx, size):
                 xx = pill(d, x, y + 6, g.result or "–", F("cb", 18), h=24) + 8
                 s = f"{g.us}–{g.them} " + ("vs " if g.home else "at ") + g.opp_name
                 text(d, (xx, y + 4), s, F("sb", 21))
-                dt = time.strftime("%a %b ", time.localtime(g.start)) + str(time.localtime(g.start).tm_mday)
+                dt = day_name(time.localtime(g.start), short=True) + " " + day_month(time.localtime(g.start))
                 if g.ats and ctx.cfg.get("odds", True) and g.odds.spread_us is not None and _sport(r) not in ("hockey", "baseball"):
                     dt += f" · {g.ats} {g.odds.spread_us:+g}"
                 text(d, (xx, y + 30), dt, F("cm", 16))
@@ -1086,7 +1123,7 @@ def detail_sky(ctx, size):
         y += 22
     if ctx.upcoming and y < h - 24:
         ev = ctx.upcoming[0]
-        text(d, (x + 8, h - 24), ellipsize(d, f"Next: {ev.title} {time.strftime('%a', time.localtime(ev.start))} {hm(ev.start)}",
+        text(d, (x + 8, h - 24), ellipsize(d, f"{tr('Next')}: {ev.title} {day_name(time.localtime(ev.start), short=True)} {hm(ev.start)}",
                                          F("csb", 16), w - x - 20), F("csb", 16))
     return c
 
