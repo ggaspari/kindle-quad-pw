@@ -74,8 +74,21 @@ battery() {
     echo "${b:-0}"
 }
 
+# the charger's own flag (PW1: aplite_charger, per KOReader), then powerd's
+CHARGING_FILES="/sys/devices/platform/aplite_charger.0/charging /sys/devices/platform/fsl-usb2-udc/charging
+/sys/devices/system/wario_charger/wario_charger0/charging"
+
+power_why() {   # one line for the log: what on_usb looked at
+    w="POWER=$POWER batt=$(battery)% lipc.isCharging=$(lipc-get-prop com.lab126.powerd isCharging 2>/dev/null)"
+    for f in $CHARGING_FILES; do [ -r "$f" ] && w="$w ${f##*/platform/}=$(cat "$f")"; done
+    echo "$w"
+}
+
 on_usb() {
     case "$POWER" in usb) return 0 ;; battery) return 1 ;; esac
+    for f in $CHARGING_FILES; do
+        [ -r "$f" ] && [ "$(cat "$f" 2>/dev/null)" = 1 ] && return 0
+    done
     [ "$(lipc-get-prop com.lab126.powerd isCharging 2>/dev/null)" = 1 ] && return 0
     # a full battery stops "charging" while still plugged in
     [ "$(battery)" -ge 100 ] 2>/dev/null && return 0
@@ -84,10 +97,23 @@ on_usb() {
 
 find_touch() {
     [ -n "$TOUCH_DEV" ] && { echo "$TOUCH_DEV"; return; }
-    # the first input device whose name looks like a touchscreen
-    awk '/^N: Name=/ { t = tolower($0) ~ /zforce|touch|cyttsp|pt_mt|elan/ }
+    # 1) an input device whose name looks like a touchscreen
+    d=$(awk '/^N: Name=/ { t = tolower($0) ~ /zforce|touch|cyttsp|pt_mt|elan/ }
          t && /^H: Handlers=/ { for (i = 1; i <= NF; i++) if ($i ~ /^event[0-9]+$/) { print "/dev/input/" $i; exit } }' \
-        /proc/bus/input/devices 2>/dev/null | head -n 1 | grep . || echo /dev/input/event1
+        /proc/bus/input/devices 2>/dev/null | head -n 1)
+    [ -n "$d" ] && [ -e "$d" ] && { echo "$d"; return; }
+    # 2) the first one with absolute axes: a touchscreen has them, buttons don't
+    for e in /sys/class/input/event*; do
+        abs=$(cat "$e/device/capabilities/abs" 2>/dev/null)
+        case "$abs" in "" | 0) continue ;; esac
+        [ -e "/dev/input/${e##*/}" ] && { echo "/dev/input/${e##*/}"; return; }
+    done
+    # 3) KOReader's choice for the PW1
+    echo /dev/input/event0
+}
+
+input_names() {
+    sed -n 's/^N: Name="\(.*\)"/\1/p' /proc/bus/input/devices 2>/dev/null | tr '\n' ',' | sed 's/,$//'
 }
 
 wifi_up() {   # wait up to $1 s for Wi-Fi
@@ -120,25 +146,35 @@ suspend_for() {   # deep sleep, woken by the RTC
 # code(2) value(4), printed as 8 unsigned 16-bit words. awk keeps the finger
 # state between reads and prints "UP x y seconds_held" when it lifts.
 TOUCH_AWK='
-BEGIN { split(st, a, " "); down = a[1]; x = a[2]; y = a[3]; ts = a[4] }
+# state across reads: down x y ts explicit framepos
+#   explicit = the device says when a finger lifts (MT protocol B tracking id,
+#              BTN_TOUCH or pressure); otherwise it is MT protocol A, where a
+#              report frame with no contact in it means the finger lifted
+BEGIN { split(st, a, " "); down = a[1]; x = a[2]; y = a[3]; ts = a[4]; explicit = a[5]; fp = a[6] }
+function lift() { if (down) printf "UP %d %d %.2f\n", x, y, t - ts; down = 0 }
+function press() { if (!down) { down = 1; ts = t } }
 NF >= 8 {
     o = NF - 8
     t = ($(o+1) + $(o+2) * 65536) + ($(o+3) + $(o+4) * 65536) / 1000000
     type = $(o+5); code = $(o+6); v = $(o+7) + $(o+8) * 65536
     if (v >= 2147483648) v -= 4294967296
     if (type == 3) {
-        if (code == 53 || code == 0) x = v
-        else if (code == 54 || code == 1) y = v
+        if (code == 53 || code == 0) { x = v; fp = 1; if (!explicit) press() }
+        else if (code == 54 || code == 1) { y = v; fp = 1; if (!explicit) press() }
+        else if (code == 48 || code == 50 || code == 58) fp = 1      # touch major / width / MT pressure: a contact
         else if (code == 57 || code == 24) {            # tracking id (-1 = lifted) / pressure (0 = lifted)
-            if ((code == 57 && v < 0) || (code == 24 && v == 0)) { if (down) printf "UP %d %d %.2f\n", x, y, t - ts; down = 0 }
-            else if (!down) { down = 1; ts = t }
+            explicit = 1
+            if ((code == 57 && v < 0) || (code == 24 && v == 0)) lift(); else press()
         }
     } else if (type == 1 && code == 330) {              # BTN_TOUCH
-        if (v) { if (!down) { down = 1; ts = t } }
-        else { if (down) printf "UP %d %d %.2f\n", x, y, t - ts; down = 0 }
+        explicit = 1
+        if (v) press(); else lift()
+    } else if (type == 0 && code == 0) {                # SYN_REPORT: end of a frame
+        if (!explicit && !fp) lift()
+        fp = 0
     }
 }
-END { printf "STATE %d %d %d %.3f\n", down, x, y, ts }'
+END { printf "STATE %d %d %d %.3f %d %d\n", down, x, y, ts, explicit, fp }'
 
 if command -v hexdump >/dev/null 2>&1; then
     words() { hexdump -v -e '8/2 "%u " "\n"'; }
@@ -149,7 +185,7 @@ fi
 # touch_loop DEV ACTION -- ACTION is "run" (send taps) or "test" (dry-run, log only)
 touch_loop() {
     exec 3< "$1"
-    st="0 0 0 0"
+    st="0 0 0 0 0 0"
     while :; do
         out=$(dd bs=1024 count=1 <&3 2>/dev/null | words | awk -v st="$st" "$TOUCH_AWK")
         st=$(echo "$out" | sed -n 's/^STATE //p')
@@ -205,14 +241,24 @@ run() {
     trap "" TERM HUP        # survive KUAL closing and the UI shutting down; cleanup takes over below
     echo $$ > "$PIDF"
     log "starting: server $SERVER, fbink ${FBINK:-none (eips: $(command -v eips || echo missing))}"
+    log "input devices: $(input_names)"
+    dev=$(find_touch)
+    # without a touchscreen there'd be no way back (taps and the long press
+    # both need it), so check it before taking the Kindle UI away
+    # (a subshell: a failed redirection on exec would end this whole script)
+    if ! ( : < "$dev" ) 2>/dev/null; then
+        log "can't open touchscreen $dev: NOT starting (set TOUCH_DEV in quad.conf, see Diagnostics)"
+        rm -f "$PIDF"
+        exit 1
+    fi
+    log "touch: $dev"
+    log "power: $(power_why)"
     framework_stop
     trap cleanup TERM INT HUP
     lipc-set-prop com.lab126.powerd preventScreenSaver 1 2>/dev/null
     eips -c >/dev/null 2>&1
     say "Quad Board: connecting to $SERVER"
     wifi_up 30 || log "no wifi yet"
-    dev=$(find_touch)
-    log "touch: $dev"
     touch_loop "$dev" run &
     TPID=$!
 
@@ -237,6 +283,10 @@ run() {
     woke=$(date +%s)
     while :; do
         if on_usb; then usb=1; else usb=0; fi
+        if [ "$usb" != "${lastusb:-}" ]; then
+            log "power: $([ $usb = 1 ] && echo USB, staying awake || echo battery, sleeping between updates) ($(power_why))"
+            lastusb=$usb
+        fi
         now=$(date +%s)
         last=$(cat "$RUN/lasttap" 2>/dev/null || echo 0)
         [ "$last" -gt "$woke" ] 2>/dev/null && woke=$last
