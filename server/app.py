@@ -51,13 +51,13 @@ DASH_HTML = os.path.join(HERE, "web", "dashboard.html")
 
 DEFAULTS = {
     "label": "Home",
-    "city": "Tampa",             # named in the Claude brief's prompt
-    "lat": 27.9506, "lon": -82.4572,
+    "city": "Salvador",          # named in the Claude brief's prompt
+    "lat": -12.9711, "lon": -38.5108,
     "units": "C",                # C = °C and km/h; F = °F and mph
     "clock": "24",               # 24 | 12
     "lang": "pt",                # dates and times: pt | en
     "alerts": "auto",            # auto (NWS in the US, INMET in Brazil) | nws | inmet | off
-    "alert_geocode": "",         # optional IBGE city code, for INMET alerts without a polygon
+    "alert_geocode": "2927408",  # IBGE city code (Salvador), for INMET alerts without a polygon
     "slots": ["weather", "news", "sports", "sky"],
     "interval_min": 10,          # the main cadence: every panel refreshes on this beat
     "sky_min": 10,               # plane panel can run faster (partial refresh, no flash)

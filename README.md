@@ -100,6 +100,7 @@ On first boot the board opens a Wi-Fi setup portal named `QuadBoard-XXXX`. Join 
 
 ## Notes
 
+- The default location is Salvador, BA (-12.9711, -38.5108; IBGE 2927408 for INMET alerts). Change city, latitude and longitude on the dashboard.
 - Times use the server's `TZ` (defaults to `America/Sao_Paulo`). Market hours are always NYSE's.
 - Units default to °C and km/h, the clock to 24-hour, the board's language to Portuguese (dates, labels, weather, sports and sky; `lang` = `en` switches it all back) and numbers to 1.234,56; all switch on the dashboard.
 - Default tickers: Ibovespa (`^BVSP`), dólar (`BRL=X`), IFIX (`IFIX.SA`) and bitcoin in reais (`BTC-BRL`). Each one's open/closed state follows its own market (B3, FX, crypto or NYSE).
