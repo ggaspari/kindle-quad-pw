@@ -75,8 +75,18 @@ WMO = {
 }
 
 
+WMO_PT = {"Clear": "Céu limpo", "Mostly clear": "Predomínio de sol", "Partly cloudy": "Parcialmente nublado",
+          "Cloudy": "Nublado", "Fog": "Neblina", "Light drizzle": "Garoa fraca", "Drizzle": "Garoa",
+          "Freezing drizzle": "Garoa congelante", "Light rain": "Chuva fraca", "Rain": "Chuva",
+          "Heavy rain": "Chuva forte", "Freezing rain": "Chuva congelante", "Light snow": "Neve fraca",
+          "Snow": "Neve", "Heavy snow": "Neve forte", "Showers": "Pancadas de chuva",
+          "Heavy showers": "Pancadas fortes", "Snow showers": "Pancadas de neve", "Thunderstorms": "Tempestades",
+          "Storms, hail": "Tempestade e granizo"}
+
+
 def wmo(code):
-    return WMO.get(int(code or 0), ("—", "cloud"))
+    desc, kind = WMO.get(int(code or 0), ("—", "cloud"))
+    return (WMO_PT.get(desc, desc) if LANG == "pt" else desc), kind
 
 
 @dataclass
@@ -145,13 +155,18 @@ def _fetch_weather(lat, lon, units="fahrenheit"):
         wet = [t for t, p in pts if p >= 0.1]
         if pts[0][1] >= 0.1:
             dry = next((t for t, p in pts if p < 0.1), None)
-            rain_note = f"Raining now · easing by {_hm(dry)}" if dry else "Raining now"
+            if LANG == "pt":
+                rain_note = f"Chovendo agora · melhora às {_hm(dry)}" if dry else "Chovendo agora"
+            else:
+                rain_note = f"Raining now · easing by {_hm(dry)}" if dry else "Raining now"
         elif wet:
-            rain_note = f"Rain starting around {_hm(wet[0])}"
+            rain_note = (f"Chuva a partir das {_hm(wet[0])}" if LANG == "pt"
+                         else f"Rain starting around {_hm(wet[0])}")
     if not rain_note:
         nxt = next(((t, p) for t, _, p, _ in hourly if t > now and p >= 50), None)
         if nxt and nxt[0] - now < 12 * 3600:
-            rain_note = f"{nxt[1]}% rain chance by {_hm(nxt[0])}"
+            rain_note = (f"Chuva {nxt[1]}% às {_hm(nxt[0])}" if LANG == "pt"
+                         else f"{nxt[1]}% rain chance by {_hm(nxt[0])}")
     return Weather(temp=c["temperature_2m"], feels=c["apparent_temperature"], code=c["weather_code"],
                    is_day=bool(c["is_day"]), humidity=int(c["relative_humidity_2m"]),
                    wind=c["wind_speed_10m"], wind_dir=c["wind_direction_10m"], gust=c["wind_gusts_10m"],

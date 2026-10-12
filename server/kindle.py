@@ -22,6 +22,7 @@ LOGICAL_W = 800
 LOGICAL_H = round(LOGICAL_W * LAND[1] / LAND[0])    # 592
 
 NAV_HINT = "tap  left: back  ·  right: next  ·  middle: home"
+NAV_HINT_PT = "toque  esquerda: voltar  ·  direita: próxima  ·  meio: início"
 
 
 def _layout(w, h):
@@ -32,14 +33,14 @@ def _layout(w, h):
 
 def landscape(ctx: R.Ctx) -> Image.Image:
     """The board as a 1024 x 758 L image, 16 grey levels, not yet rotated."""
-    saved = (R.W, R.H, R.CELL_W, R.CELL_H, R.BODY, R.AA, R.NAV_HINT)
+    saved = (R.W, R.H, R.CELL_W, R.CELL_H, R.BODY, R.AA, R.NAV_HINT, R.NAV_HINT_PT)
     try:
         _layout(LOGICAL_W, LOGICAL_H)
         R.AA = True
-        R.NAV_HINT = NAV_HINT
+        R.NAV_HINT, R.NAV_HINT_PT = NAV_HINT, NAV_HINT_PT
         img = R._compose_l(ctx)
     finally:
-        R.W, R.H, R.CELL_W, R.CELL_H, R.BODY, R.AA, R.NAV_HINT = saved
+        R.W, R.H, R.CELL_W, R.CELL_H, R.BODY, R.AA, R.NAV_HINT, R.NAV_HINT_PT = saved
     img = img.resize(LAND, Image.LANCZOS)
     # the 1.28x upscale softens edges a touch; e-paper also reads greys
     # lighter than a monitor, so sharpen and pull the mid-tones darker

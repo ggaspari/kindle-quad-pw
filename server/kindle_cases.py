@@ -17,7 +17,7 @@ wx = S.Weather(temp=29, feels=33, code=2, is_day=lt.tm_hour in range(7, 19), hum
                                                                    (31, 21, 0, 10, 9)])],
                hourly=[(now + 3600 * i, 29 - abs(i - 4) * 0.5, [5, 10, 20, 45, 70, 60, 30, 15, 10, 5, 5, 5][i % 12], 2)
                        for i in range(24)],
-               rain_note="Rain likely around 16:00",
+               rain_note="Chuva 70% às 16:00",
                alerts=[("Tempestade", "INMET: Tempestade (Perigo) até 21:00", "Severe")])
 heads = [S.Headline(t, "g1", now - 600 * i) for i, t in enumerate([
     "Copom mantém Selic e sinaliza cautela com inflação de serviços",

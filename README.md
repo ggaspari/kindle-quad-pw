@@ -101,7 +101,7 @@ On first boot the board opens a Wi-Fi setup portal named `QuadBoard-XXXX`. Join 
 ## Notes
 
 - Times use the server's `TZ` (defaults to `America/Sao_Paulo`). Market hours are always NYSE's.
-- Units default to °C and km/h, the clock to 24-hour, dates to Portuguese ("Segunda-feira, 12 de outubro") and numbers to 1.234,56; all switch on the dashboard.
+- Units default to °C and km/h, the clock to 24-hour, the board's language to Portuguese (dates, labels, weather, sports and sky; `lang` = `en` switches it all back) and numbers to 1.234,56; all switch on the dashboard.
 - Default tickers: Ibovespa (`^BVSP`), dólar (`BRL=X`), IFIX (`IFIX.SA`) and bitcoin in reais (`BTC-BRL`). Each one's open/closed state follows its own market (B3, FX, crypto or NYSE).
 - The notes feature reads a separate "note box" project's database and is off unless `QUAD_NOTES_DB` is set.
 - Team logos and airline logos are downloaded at runtime and cached in `server/cache/`. None are shipped in this repo.
