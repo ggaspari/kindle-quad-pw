@@ -13,12 +13,16 @@
 #
 # Only busybox tools: wget, hexdump/od, awk, dd, lipc-*.
 
+# KUAL may hand us a short PATH: stop/start (upstart) live in /sbin, eips in /usr/sbin
+export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+
 EXT=${QUAD_EXT:-/mnt/us/extensions/quadboard}
 RUN=${QUAD_RUN:-/var/tmp/quadboard}            # a copy runs from here, so a USB-drive mount can't pull the script away
 PIDF=$RUN/quad.pid
 LOG=$EXT/quad.log
 
-[ -f "$EXT/quad.conf" ] && . "$EXT/quad.conf"
+# tr: a quad.conf saved on Windows (CRLF) would otherwise put a \r in every value
+[ -f "$EXT/quad.conf" ] && eval "$(tr -d '\r' < "$EXT/quad.conf")"
 : "${SERVER:=http://192.168.1.10:8740}"
 : "${TOKEN:=dev}"
 : "${POWER:=auto}"                # auto | usb | battery
@@ -165,10 +169,18 @@ touch_loop() {
 # ---------------------------------------------------------------- main loop
 
 framework_stop() {
-    trap "" TERM            # the UI's teardown TERMs its process group, which can include us (KUAL)
-    stop lab126_gui 2>/dev/null || stop framework 2>/dev/null || /etc/init.d/framework stop 2>/dev/null
+    # the UI's teardown TERMs its process group, which can include us (KUAL);
+    # run() already ignores TERM until this is done
+    if stop lab126_gui >> "$LOG" 2>&1; then
+        log "kindle UI stopped (lab126_gui)"
+    elif stop framework >> "$LOG" 2>&1; then
+        log "kindle UI stopped (framework)"
+    elif [ -x /etc/init.d/framework ] && /etc/init.d/framework stop >> "$LOG" 2>&1; then
+        log "kindle UI stopped (init.d)"
+    else
+        log "could NOT stop the kindle UI (stop: $(command -v stop || echo missing))"
+    fi
     usleep 1500000 2>/dev/null || sleep 2
-    trap - TERM
 }
 
 framework_start() {
@@ -187,8 +199,9 @@ cleanup() {
 }
 
 run() {
+    trap "" TERM HUP        # survive KUAL closing and the UI shutting down; cleanup takes over below
     echo $$ > "$PIDF"
-    log "starting: server $SERVER, fbink ${FBINK:-none (eips)}"
+    log "starting: server $SERVER, fbink ${FBINK:-none (eips: $(command -v eips || echo missing))}"
     framework_stop
     trap cleanup TERM INT HUP
     lipc-set-prop com.lab126.powerd preventScreenSaver 1 2>/dev/null
@@ -241,9 +254,19 @@ running() { [ -f "$PIDF" ] && kill -0 "$(cat "$PIDF")" 2>/dev/null; }
 case "$1" in
     start)
         running && { log "already running"; exit 0; }
-        mkdir -p "$RUN"
-        cp "$0" "$RUN/quad.sh"
-        nohup sh "$RUN/quad.sh" run >> "$LOG" 2>&1 &
+        log "start requested"
+        if ! { mkdir -p "$RUN" && cp "$0" "$RUN/quad.sh"; }; then
+            log "can't copy the script to $RUN"
+            exit 1
+        fi
+        # a session of its own, so KUAL closing its menu can't take us down with it
+        if command -v setsid >/dev/null 2>&1; then
+            setsid sh "$RUN/quad.sh" run >> "$LOG" 2>&1 < /dev/null &
+        else
+            nohup sh "$RUN/quad.sh" run >> "$LOG" 2>&1 < /dev/null &
+        fi
+        sleep 2
+        running || log "the board process exited right away; see the lines above"
         ;;
     run)
         mkdir -p "$RUN"
