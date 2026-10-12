@@ -3,6 +3,9 @@
 All three sources are free and keyless:
 
   adsb.lol      /v2/point/{lat}/{lon}/{radius_nm}  -- live traffic
+  adsb.fi       opendata /api/v2/lat/{lat}/lon/{lon}/dist/{nm} -- live traffic,
+                another set of feeders (merged with adsb.lol; matters where
+                coverage is thin, e.g. Brazil)
   adsbdb.com    /v0/callsign/{cs}, /v0/aircraft/{hex} -- route + airframe
   logo pack     c0wsaysmoo/plane-tracker-rgb-pi, 16x16 PNGs keyed by ICAO
   kiwi.com      64x64 PNGs keyed by IATA (nicer, used when we know the IATA)
@@ -150,14 +153,40 @@ class Aircraft(dict):
         return self.get("alt_baro") == "ground"
 
 
+# Community ADS-B networks with keyless readsb-style APIs. Each has its own
+# volunteer receivers, so where coverage is thin the union sees more.
+FEEDS = [
+    ("adsb.lol", "https://api.adsb.lol/v2/point/{lat:.5f}/{lon:.5f}/{r}"),
+    ("adsb.fi", "https://opendata.adsb.fi/api/v2/lat/{lat:.5f}/lon/{lon:.5f}/dist/{r}"),
+]
+FEED_STATUS = {}    # name -> aircraft count from the last poll, or "error: ..."
+
+
 def fetch_nearby(lat: float, lon: float, radius_nm: int = 25, timeout: float = 8.0):
-    """Live aircraft within radius. Raises on network/API failure."""
-    url = f"https://api.adsb.lol/v2/point/{lat:.5f}/{lon:.5f}/{int(radius_nm)}"
-    r = requests.get(url, headers={"User-Agent": UA}, timeout=timeout)
-    r.raise_for_status()
-    data = r.json()
+    """Live aircraft within radius, merged across FEEDS (one entry per ICAO
+    hex, freshest position wins). Raises only if every feed fails."""
+    merged, errors = {}, []
+    for name, url in FEEDS:
+        try:
+            r = requests.get(url.format(lat=lat, lon=lon, r=int(min(250, radius_nm))),
+                             headers={"User-Agent": UA}, timeout=timeout)
+            r.raise_for_status()
+            data = r.json()
+        except Exception as exc:
+            FEED_STATUS[name] = f"error: {exc.__class__.__name__}"
+            errors.append(f"{name}: {exc!r}"[:120])
+            continue
+        acs = data.get("ac") or data.get("aircraft") or []
+        FEED_STATUS[name] = len(acs)
+        for raw in acs:
+            key = raw.get("hex") or id(raw)
+            old = merged.get(key)
+            if old is None or (raw.get("seen_pos", 99) < old.get("seen_pos", 99)):
+                merged[key] = raw
+    if len(errors) == len(FEEDS):
+        raise RuntimeError("all ADS-B feeds failed: " + "; ".join(errors))
     out = []
-    for raw in data.get("ac", []):
+    for raw in merged.values():
         if raw.get("lat") is None or raw.get("lon") is None:
             continue
         ac = Aircraft(raw)

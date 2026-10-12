@@ -9,6 +9,7 @@
 #   quad.sh start       stop the Kindle UI and run the board (from KUAL)
 #   quad.sh stop        back to the Kindle UI
 #   quad.sh touchtest   for 30 s, log taps and show where the server maps them
+#   quad.sh autostart-on / autostart-off   start the board on every boot (upstart job)
 #   quad.sh diag        log tools, input devices and raw touch events, to debug a new Kindle
 #   quad.sh status
 #
@@ -21,6 +22,8 @@ EXT=${QUAD_EXT:-/mnt/us/extensions/quadboard}
 RUN=${QUAD_RUN:-/var/tmp/quadboard}            # a copy runs from here, so a USB-drive mount can't pull the script away
 PIDF=$RUN/quad.pid
 LOG=$EXT/quad.log
+UPSTART_JOB=${QUAD_UPSTART:-/etc/upstart/quadboard.conf}   # "Start at boot" installs this
+BOOT_MARK=${QUAD_BOOT_MARK:-/tmp/quadboard.booted}         # tmpfs: gone on every reboot
 
 # tr: a quad.conf saved on Windows (CRLF) would otherwise put a \r in every value
 [ -f "$EXT/quad.conf" ] && eval "$(tr -d '\r' < "$EXT/quad.conf")"
@@ -470,12 +473,52 @@ case "$1" in
         [ -n "$WORDS" ] && words < "$RUN/raw.bin" 2>/dev/null | head -n 40 | while read -r ln; do log "    $ln"; done
         log "=== diag done"
         ;;
+    boot)
+        # from the upstart job, once per boot: run in the foreground as the
+        # job's own process (nothing to detach from), from a copy as usual
+        if [ -e "$BOOT_MARK" ]; then exit 0; fi       # e.g. the UI restarting after a long press
+        : > "$BOOT_MARK"
+        if [ -e "$EXT/NOAUTOSTART" ]; then log "boot: NOAUTOSTART present, not starting"; exit 0; fi
+        sleep "${BOOT_DELAY_S:-30}"                 # let the Kindle UI and Wi-Fi settle first
+        if [ -e "$EXT/NOAUTOSTART" ]; then log "boot: NOAUTOSTART present, not starting"; exit 0; fi
+        running && exit 0
+        log "boot: starting the board"
+        if ! { mkdir -p "$RUN" && cp "$0" "$RUN/quad.sh"; }; then log "boot: can't copy the script to $RUN"; exit 1; fi
+        exec sh "$RUN/quad.sh" run >> "$LOG" 2>&1 < /dev/null
+        ;;
+    autostart-on)
+        ui=lab126_gui
+        if [ ! -f /etc/upstart/lab126_gui.conf ] && [ -f /etc/upstart/framework.conf ]; then ui=framework; fi
+        if ! mntroot rw >> "$LOG" 2>&1; then log "autostart: can't make / writable (mntroot rw)"; exit 1; fi
+        {
+            echo "# Quad Board: start the e-paper board on boot. Installed by KUAL > Quad Board >"
+            echo "# Start at boot; remove with \"Start at boot: off\", or drop a file named"
+            echo "# NOAUTOSTART into $EXT to skip it without touching this."
+            echo "start on started $ui"
+            echo ""
+            echo "script"
+            echo "    exec /bin/sh $EXT/bin/quad.sh boot"
+            echo "end script"
+        } > "$UPSTART_JOB"
+        sync
+        mntroot ro >> "$LOG" 2>&1
+        if [ -s "$UPSTART_JOB" ]; then log "autostart ON ($UPSTART_JOB, after $ui)"; else log "autostart: couldn't write $UPSTART_JOB"; fi
+        ;;
+    autostart-off)
+        if [ ! -e "$UPSTART_JOB" ]; then log "autostart already off"; exit 0; fi
+        if ! mntroot rw >> "$LOG" 2>&1; then log "autostart: can't make / writable (mntroot rw)"; exit 1; fi
+        rm -f "$UPSTART_JOB"
+        sync
+        mntroot ro >> "$LOG" 2>&1
+        log "autostart OFF"
+        ;;
     status)
         running && echo "running (pid $(cat "$PIDF"))" || echo "stopped"
+        if [ -e "$UPSTART_JOB" ]; then echo "starts at boot"; else echo "does not start at boot"; fi
         tail -n 15 "$LOG" 2>/dev/null
         ;;
     *)
-        echo "usage: $0 start|stop|touchtest|diag|status"
+        echo "usage: $0 start|stop|autostart-on|autostart-off|touchtest|diag|status"
         exit 1
         ;;
 esac

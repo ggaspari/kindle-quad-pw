@@ -322,7 +322,11 @@ function render() {
   rows.push(['Weather', st(src.weather)], ['Alerts (' + (S.cfg.alerts || 'auto') + ')', st(src.alerts)], ['Quotes', st(src.quotes)]);
   for (const [k, v] of Object.entries(src.news)) rows.push([S.feeds[k] || k, st(v)]);
   for (const [k, v] of Object.entries(src.sports)) rows.push([S.teams[k] || k, st(v)]);
-  rows.push(['Plane feed', st(src.sky)], ['Claude brief', st(src.brief)]);
+  rows.push(['Plane feed', st(src.sky)]);
+  if (src.sky && src.sky.feeds && Object.keys(src.sky.feeds).length)
+    rows.push(['Plane networks', Object.entries(src.sky.feeds).map(([k, v]) => `${k}: ${typeof v === 'number' ? v + ' in range' : v}`).join(' · ')]);
+  if (src.sky && src.sky.sgp4 === false) rows.push(['ISS passes', '<span style="color:var(--bad)">off: sgp4 not installed</span>']);
+  rows.push(['Claude brief', st(src.brief)]);
   if (src.events && src.events.upcoming && src.events.upcoming.length)
     rows.push(['Next sky event', src.events.upcoming.map(e => `${e.title} in ${Math.round(e.in_s/3600)}h (${e.confidence})`).join('<br>')]);
   rows.push(['Render', `${S.render_ms} ms · cycle ${S.cycle}`], ['Device', `${d.polls} polls · ${d.boots} boots · on v${d.version}`]);

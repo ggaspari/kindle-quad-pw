@@ -66,6 +66,14 @@ A interface do Kindle some e o painel aparece. Para sair, segure o dedo na tela 
 - **Imagem de cabeça para baixo?** No dashboard, mude **Which way it lies** (90° = porta USB à esquerda, 270° = à direita).
 - **Toques do lado errado?** Rode **KUAL → Quad Board → Touch test**. Por 30 s, toque à esquerda, no meio e à direita (com o Kindle deitado). Cada toque aparece no dashboard como `x,y -> left/middle/right`. Se sair trocado, ajuste **Touch axes** (Flip X / Flip Y) e teste de novo.
 
+## Iniciar sozinho quando o Kindle ligar
+
+No KUAL, escolha **Quad Board → Start at boot: on**. Isso instala um pequeno serviço do sistema (`/etc/upstart/quadboard.conf`). A partir daí, a cada boot, o painel começa uns 30 s depois que a tela inicial do Kindle aparece.
+
+- **Sair continua igual:** segure o dedo na tela por 3 s. O painel só volta no próximo boot, nunca logo depois de sair.
+- **Desligar o início automático:** use **Start at boot: off**. Se o KUAL não estiver acessível, conecte por USB e crie um arquivo vazio chamado `NOAUTOSTART` dentro de `extensions/quadboard/`. Enquanto ele existir, o painel não inicia no boot.
+- **Proteções:** sem servidor, tela de toque ou um jeito de ler os toques, o painel não toma a tela. Ele desiste e devolve o Kindle, e o motivo fica no `quad.log`.
+
 ## Dicas e limitações
 
 - **Use um carregador de tomada, não o computador.** Ligado a um PC, o Kindle entra em modo pen-drive e desmonta `/mnt/us`. O script roda de uma cópia em `/var/tmp` para não cair, mas os logs e a configuração ficam inacessíveis até desconectar.
