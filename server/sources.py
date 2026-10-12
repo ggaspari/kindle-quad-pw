@@ -302,6 +302,7 @@ def alert_source(cfg):
 
 
 CLOCK24 = True     # 24-hour clock everywhere; app.py sets it from cfg["clock"]
+LANG = "pt"        # dates and times on the board: pt | en; app.py sets it from cfg["lang"]
 
 
 def _hm(epoch):
