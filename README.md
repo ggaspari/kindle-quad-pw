@@ -1,118 +1,129 @@
-# Quad Board — Kindle Paperwhite edition
+# Quad Board para Kindle Paperwhite
 
-> Based on [j-rod-ay/eink-quad](https://github.com/j-rod-ay/eink-quad) (MIT). This copy adds a jailbroken
-> first-gen **Kindle Paperwhite** as a screen: see [`kindle/README.md`](kindle/README.md) (pt-BR).
+Um Kindle Paperwhite antigo, com jailbreak, vira um painel de cozinha: deitado de lado, ele mostra num relance o clima de Salvador, as notícias e o mercado, os jogos do Brasileirão e a maré. Tudo em 16 tons de cinza, atualizando sozinho e trocando de página com um toque.
 
-An e-paper kitchen dashboard for the Seeed reTerminal E1001. Four corners of your day on a 7.5" screen: the weather, the news and markets, your teams, and whatever is flying over the house right now.
+![O painel no Kindle Paperwhite](docs/img/kindle-quad.png)
 
-![Quad Board cycling through its pages](docs/img/demo.gif)
+## O que aparece
 
-**[See the project page →](https://j-rod-ay.github.io/eink-quad/)**
-
-🖥️ **The screen: [Seeed reTerminal E1001 on Amazon](https://link.amazon/B0gH6ekeP)** — 7.5″ 800×480 mono e-paper, ESP32-S3, battery. *(affiliate link)*
-
-## What's on it
-
-| Corner | Shows |
+| Canto | Mostra |
 |---|---|
-| **Weather** | current conditions, rain chance for the next few hours, 3-day forecast, 15-minute rain nowcast, official alerts (INMET in Brazil, NWS in the US) |
-| **News & markets** | index and ticker moves, rotating headlines (g1, Agência Brasil, Folha, BBC News Brasil; WSJ still available) |
-| **Your teams** | live score, last result or next game for any ESPN team, with TV and the betting line |
-| **Sea (default here)** | next high/low tide, the tide curve, waves and water temperature, from Open-Meteo Marine; `sky_mode` = `planes` brings the plane corner back |
-| **Plane overhead** | airline, route, aircraft, altitude and which way to look, from live ADS-B. An ISS pass or a visible rocket launch takes this corner over |
+| **Clima** | condição atual, chance de chuva nas próximas horas, previsão de 3 dias, aviso de chuva para os próximos minutos e alertas oficiais do **INMET** |
+| **Notícias e mercado** | manchetes do **g1** e da **Agência Brasil** (Folha e BBC News Brasil opcionais), mais **Ibovespa, dólar, IFIX e bitcoin** com minigráfico do dia |
+| **Times** | **Bahia**, **São Paulo** e o **G4** do Brasileirão ao vivo: placar, último resultado, próximo jogo (Libertadores, Sul-Americana e Copa do Brasil inclusive), posição e pontos |
+| **Mar** | próxima maré alta e baixa, curva da maré, ondas e temperatura da água. Passagens visíveis da ISS e lançamentos de foguete tomam o canto quando acontecem |
 
-A strip under the header carries one line: your own pinned message, a severe weather alert, or a sentence from Claude that ties the day together (optional).
+Logo abaixo da data, uma faixa traz uma linha: o seu recado fixado, um alerta severo do INMET ou um resumo do dia escrito pelo **Claude** (opcional). A interface toda está em português, com °C, relógio de 24 h e números no formato brasileiro.
 
-The three buttons on top work as **home**, **previous page** and **next page**. Each corner has its own detail page:
+Cada canto tem uma página de detalhe:
 
 | | |
 |---|---|
-| ![Weather](docs/img/weather.png) | ![News & markets](docs/img/news.png) |
-| ![Scores](docs/img/sports.png) | ![Sky above](docs/img/sky.png) |
+| ![Clima](docs/img/kindle-weather.png) | ![Notícias e mercado](docs/img/kindle-news.png) |
+| ![Placar e agenda](docs/img/kindle-sports.png) | ![Mar e marés](docs/img/kindle-sea.png) |
 
-## How it works
+### Toque
 
-The screen doesn't decide anything. A small Python server renders every pixel with Pillow, diffs the frame against what's already on the glass, and hands the board only the rectangles that changed. The board long-polls over HTTPS (or deep-sleeps between checks on battery) and plays those rectangles as ~1 s partial refreshes. A full refresh with 4 grey levels runs on the regular update, and a flashing one every couple of hours wipes ghosting.
+Com o Kindle deitado:
 
-Changing the layout, the cadence or a data source never means reflashing. Everything is a setting on the server's web dashboard.
+| Toque | Faz |
+|---|---|
+| terço **esquerdo** | página anterior |
+| terço **direito** | próxima página |
+| **meio** | volta ao quadro inicial (no quadro, atualiza tudo) |
+| **segurar 3 s** | sai e devolve a interface do Kindle |
+
+## Como funciona
 
 ```
-server/    Python: data sources, renderer, long-poll server, settings dashboard
-firmware/  PlatformIO / Arduino for the reTerminal E1001 (ESP32-S3)
-kindle/    KUAL extension + busybox client for a jailbroken Kindle Paperwhite
-docs/      the project page and screenshots
+Kindle (KUAL + script busybox)                   servidor (Python, no CasaOS)
+  pergunta: "mudou alguma coisa?"  ───────────▶  espera até a próxima versão
+                                   ◀───────────  "versão 13, sem piscar"
+  baixa o PNG 758×1024 pronto     ───────────▶  desenha tudo com Pillow
+  mostra com FBInk / eips
+
+  toque ─▶ manda as coordenadas   ───────────▶  decide a zona e troca a página
 ```
 
-## Also on a Kindle
+O Kindle não decide nada: o servidor desenha cada pixel, já girado e em 16 tons de cinza, e o Kindle só baixa a imagem e mostra. Mudar layout, fontes de dados ou frequência é sempre uma configuração no dashboard do servidor, nunca uma mexida no Kindle.
 
-A jailbroken first-gen **Kindle Paperwhite** works as a second screen: the server renders a 16-grey landscape version and a busybox script on the Kindle shows it, with tap zones for previous / home / next. See [`kindle/README.md`](kindle/README.md).
+- **Na tomada:** o Kindle fica acordado e os toques respondem em 1–2 s.
+- **Na bateria:** ele acorda logo depois de cada atualização (a cada 10 min), fica uns 25 s aceitando toques e volta a dormir.
+- **Piscadas:** a tela pisca para limpar fantasmas só ao iniciar e a cada 8 atualizações; o resto é atualização parcial, sem piscar.
 
-![Quad Board on a Kindle Paperwhite](docs/img/kindle-quad.png)
+## Montando
 
-## Data sources
+Você precisa de:
 
-All keyless: Open-Meteo (forecast + nowcast, worldwide), INMET (alerts, Brazil) or api.weather.gov (alerts, US), RSS from g1 / Agência Brasil / Folha / BBC News Brasil (or WSJ), Yahoo Finance spark, ESPN's site API, adsb.lol + adsbdb, CelesTrak + Launch Library 2. The one-line brief uses the [`claude`](https://docs.claude.com/en/docs/claude-code) CLI if it's installed and logged in. Turn `llm_brief` off otherwise.
+- um **Kindle Paperwhite de 1ª geração** (2012) com **jailbreak** e **KUAL** (o FBInk é opcional, já que o `eips` do próprio Kindle também serve);
+- uma máquina **sempre ligada** na rede de casa para o servidor. Aqui é um ZimaBoard com **CasaOS**, mas qualquer Docker ou Python 3.10+ serve.
 
-## Setup
+Os passos:
 
-### Hardware
-- **[Seeed reTerminal E1001](https://link.amazon/B0gH6ekeP)** — 7.5" 800×480 mono e-paper, ESP32-S3 *(affiliate link; also at [Seeed](https://www.seeedstudio.com/))*
-- An always-on machine for the server (VPS, Raspberry Pi, NAS), reachable from the board over **HTTPS**. Put it behind nginx or Caddy. The firmware doesn't verify certificates, so a self-signed one works too.
+1. **Servidor:** siga o [`CASAOS.md`](CASAOS.md). Ele cobre o Docker, o `.env` com os tokens, o dashboard, o resumo do Claude e como manter o Docker no SSD.
+2. **Kindle:** siga o [`kindle/README.md`](kindle/README.md). Ele cobre copiar a extensão do KUAL, configurar o `quad.conf`, o Start, a calibração do toque, o início automático no boot e o diagnóstico.
 
-### Server
-
-**On CasaOS / Docker:** `docker compose up -d --build` from the repo root (set `QUAD_TOKEN` and `QUAD_ADMIN` in `.env` first). Step by step, in Portuguese: [`CASAOS.md`](CASAOS.md).
-
-Or straight from Python:
+Sem Docker, o servidor também roda direto:
 
 ```sh
 cd server
 pip install -r requirements.txt
-cp quad.env.example quad.env       # set QUAD_TOKEN and QUAD_ADMIN
+cp quad.env.example quad.env       # defina QUAD_TOKEN e QUAD_ADMIN
 set -a; . ./quad.env; set +a
-python app.py                      # listens on 127.0.0.1:8740
+QUAD_BIND=0.0.0.0 python app.py    # porta 8740
 ```
 
-Open `http://127.0.0.1:8740/?k=<QUAD_ADMIN>` to set your location, units, feeds, tickers, teams, panel order and refresh cadence. Settings are saved to `config.json`.
+## Dashboard
 
-**Preview without hardware:** `python cases.py` renders every screen with live data to `case_*.png`.
+Abra `http://<servidor>:8740/?k=<QUAD_ADMIN>` em qualquer navegador da rede. Lá ficam:
 
-**Your teams:** this edition defaults to the Brasileirão: `bahia`, `sao_paulo` and `g4`, which pulls in whoever is in the top four of ESPN's live `bra.1` table (set `g4_size` to change how many). Soccer teams show their table position and points, and their Libertadores, Sul-Americana and Copa do Brasil games too. The original Tampa keys (`bucs`, `lightning`, `rays`, `gators_fb`, `gators_bb`) are still there. Add your own in `config.json` with ESPN's sport, league and team id or abbreviation, e.g. `"flamengo": ["Flamengo", "soccer", "bra.1", "819"]` (the id is in the club's espn.com.br URL):
+- **Prévia ao vivo:** o que o Kindle está mostrando agora, e o status dele (bateria, USB, último toque).
+- **Configurações:** localização, unidades, idioma, relógio, times, feeds de notícias, cotações, conteúdo do canto do mar ou dos aviões, frequências, rotação da tela e eixos do toque.
+- **Recado fixo:** um texto que aparece na faixa de cima.
+- **Health:** a situação de cada fonte de dados, com o erro quando alguma falha.
 
-```json
-{
-  "city": "Chicago",
-  "lat": 41.8781, "lon": -87.6298,
-  "custom_teams": {
-    "bears": ["Bears", "football", "nfl", "chi"],
-    "cubs":  ["Cubs", "baseball", "mlb", "chc"]
-  },
-  "teams": ["bears", "cubs"]
-}
+Os padrões já vêm para Salvador:
+
+| Configuração | Padrão |
+|---|---|
+| Localização | Salvador, BA (código IBGE 2927408, para os alertas do INMET) |
+| Unidades / relógio / idioma / números | °C e km/h / 24 h / português / `1.234,56` |
+| Times | `bahia`, `sao_paulo`, `g4` (os 4 primeiros da tabela, ao vivo) |
+| Notícias | g1, g1 Economia, Agência Brasil |
+| Cotações | `^BVSP`, `BRL=X`, `IFIX.SA`, `BTC-BRL` |
+| Canto do céu | `sea` (maré e ondas); `planes` traz de volta o radar de aviões |
+
+Para outro time, acrescente no `config.json` com o id da ESPN, que aparece na URL do clube em espn.com.br. Por exemplo, `"custom_teams": {"flamengo": ["Flamengo", "soccer", "bra.1", "819"]}`, e depois `flamengo` na lista `teams`.
+
+**Prévia sem hardware:** `cd server && python kindle_cases.py` gera todas as telas do Kindle com dados de exemplo (`kindle_*.png`).
+
+## Fontes de dados
+
+Todas são gratuitas e sem chave:
+
+- **Clima:** [Open-Meteo](https://open-meteo.com) (previsão e chuva para os próximos minutos); alertas do [INMET](https://alertas2.inmet.gov.br).
+- **Mar:** Open-Meteo Marine. As marés vêm de um modelo oceânico: servem para saber quando a maré está alta, mas não para navegação.
+- **Notícias:** RSS do g1, da Agência Brasil, da Folha e da BBC News Brasil.
+- **Cotações:** Yahoo Finance.
+- **Futebol:** API pública da ESPN (com os nomes e as notícias da ESPN Brasil).
+- **Céu:** CelesTrak (passagens da ISS) e Launch Library 2 (lançamentos). Para o radar de aviões opcional, adsb.lol e adsb.fi, que hoje não cobrem Salvador.
+- **Resumo do dia:** o [Claude Code](https://code.claude.com) dentro do container, com a sua assinatura (`CLAUDE_CODE_OAUTH_TOKEN`). Sem token, fica desligado.
+
+## Estrutura
+
+```
+server/    Python: fontes de dados, renderização, servidor de long-poll, dashboard
+kindle/    extensão do KUAL + script busybox do Kindle (e o guia de instalação)
+firmware/  firmware do Seeed reTerminal E1001, do projeto original
+docs/      imagens
 ```
 
-### Firmware
+## Projeto original
 
-```sh
-cd firmware
-cp src/secrets.example.h src/secrets.h   # your server's host and QUAD_TOKEN
-pio run -t upload --upload-port COM9     # or upload.bat COM9 on Windows
-```
+Este repositório é uma adaptação do **[eink-quad](https://github.com/j-rod-ay/eink-quad)**, de [j-rod-ay](https://github.com/j-rod-ay), um painel de cozinha feito para a tela e-paper **Seeed reTerminal E1001** (7,5″, ESP32-S3), com clima, notícias do WSJ, times de Tampa e os aviões que passam sobre a casa ([página do projeto](https://j-rod-ay.github.io/eink-quad/)). Toda a base vem de lá: o servidor que desenha cada pixel, o protocolo de long-poll, os painéis e o dashboard.
 
-On first boot the board opens a Wi-Fi setup portal named `QuadBoard-XXXX`. Join it from your phone and pick your network. To get back to it later, hold the right button and tap the left one.
+Aqui foram acrescentados o Kindle Paperwhite como tela, a localização para o Brasil (INMET, Brasileirão, notícias e mercado brasileiros, português, °C e 24 h), o painel do mar e o empacotamento em Docker para o CasaOS. O suporte ao E1001 continua no código (`firmware/` e o layout de 800×480), e as opções originais (WSJ, times americanos, °F, inglês, aviões) seguem disponíveis no dashboard.
 
-`firmware/serial.ps1 -Port COM9` resets the board and prints its boot log.
+## Licença
 
-## Notes
-
-- The sky corner defaults to the sea (`sky_mode: sea`): community ADS-B networks (adsb.lol, adsb.fi, OpenSky) have no receivers around Salvador. Tides come from an ocean model: good for "when is the water high", not for navigation.
-- The default location is Salvador, BA (-12.9711, -38.5108; IBGE 2927408 for INMET alerts). Change city, latitude and longitude on the dashboard.
-- Times use the server's `TZ` (defaults to `America/Sao_Paulo`). Market hours are always NYSE's.
-- Units default to °C and km/h, the clock to 24-hour, the board's language to Portuguese (dates, labels, weather, sports and sky; `lang` = `en` switches it all back) and numbers to 1.234,56; all switch on the dashboard.
-- Default tickers: Ibovespa (`^BVSP`), dólar (`BRL=X`), IFIX (`IFIX.SA`) and bitcoin in reais (`BTC-BRL`). Each one's open/closed state follows its own market (B3, FX, crypto or NYSE).
-- The notes feature reads a separate "note box" project's database and is off unless `QUAD_NOTES_DB` is set.
-- Team logos and airline logos are downloaded at runtime and cached in `server/cache/`. None are shipped in this repo.
-
-## License
-
-MIT. Bundled fonts carry their own licences, listed in [`server/fonts/LICENSES.md`](server/fonts/LICENSES.md).
+MIT, como o original. As fontes incluídas têm licenças próprias, listadas em [`server/fonts/LICENSES.md`](server/fonts/LICENSES.md).

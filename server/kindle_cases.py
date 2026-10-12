@@ -33,17 +33,18 @@ heads = [S.Headline(t, "g1", now - 600 * i) for i, t in enumerate([
 qs = [S.Quote(sym, name, p, p / (1 + c / 100), [p / (1 + c / 100) * (1 + c / 100 * k / (n - 1)) for k in range(n)], "open", now)
       for sym, name, p, c, n in [("^BVSP", "Ibovespa", 145320.4, 0.85, 50), ("BRL=X", "Dólar", 5.4321, -0.69, 200),
                                  ("IFIX.SA", "IFIX", 3975.77, 0.14, 50), ("BTC-BRL", "Bitcoin", 612345.9, 2.06, 288)]]
-S.TEAMS.update({"bucs": ("Bucs", "football", "nfl", "tb"), "rays": ("Rays", "baseball", "mlb", "tb"),
-                "lightning": ("Lightning", "hockey", "nhl", "tb")})
-g = lambda **k: S.Game(**{"team": "", "abbr": "TB", "opp": "NO", "opp_name": "Saints", "home": True,
-                          "start": now + 86400, "state": "pre", "detail": "", **k})
-teams = [S.TeamRow("bucs", "Bucs", "4-1", last=g(state="post", us=27, them=17, start=now - 86400 * 2, detail="Final"),
-                   next=g(opp="DET", opp_name="Lions", home=False, start=now + 86400 * 4, tv="FOX",
-                          odds=S.Odds("DraftKings", "TB -3.5", -3.5, 47.5, -180, 150, 62))),
-         S.TeamRow("lightning", "Lightning", "2-0-1", live=g(opp="FLA", opp_name="Panthers", state="in", us=2, them=1,
-                                                             detail="2nd 12:34", tv="ESPN+")),
-         S.TeamRow("rays", "Rays", "79-83", last=g(opp="NYY", opp_name="Yankees", state="post", us=3, them=5,
-                                                   start=now - 86400 * 14, detail="Final"))]
+g = lambda key, **k: S.Game(**{"key": key, "team": "", "abbr": "", "opp": "", "opp_name": "", "home": True,
+                               "start": now + 86400, "state": "pre", "detail": "", **k})
+teams = [S.TeamRow("bahia", "Bahia", "4º · 61 pts",
+                   live=g("bahia", opp="VIT", opp_name="Vitória", state="in", us=1, them=0, detail="38'", tv="Premiere")),
+         S.TeamRow("sao_paulo", "São Paulo", "6º · 55 pts",
+                   last=g("sao_paulo", opp="PAL", opp_name="Palmeiras", state="post", us=2, them=1,
+                          start=now - 86400, detail="Final"),
+                   next=g("sao_paulo", opp="GRE", opp_name="Grêmio", home=False, start=now + 86400 * 3, tv="Globo")),
+         S.TeamRow("bra_819", "Flamengo", "1º · 70 pts",
+                   next=g("bra_819", opp="RIV", opp_name="River Plate", start=now + 86400 * 2, note="Libertadores",
+                          tv="ESPN"))]
+S.TEAMS.setdefault("bra_819", ("Flamengo", "soccer", "bra.1", "819"))
 fl = R.Sighting(callsign="DAL2474", airline="Delta Air Lines", origin="ATL", dest="TPA", origin_city="Atlanta",
                 dest_city="Tampa", alt_ft=6400, speed_kt=252, dist_nm=1.8, elev_deg=31, seen_at=now - 30,
                 flight_no="DL 2474", aircraft="Airbus A321neo", bearing=315, progress=0.93, eta_min=9, dest_dist_nm=4)
