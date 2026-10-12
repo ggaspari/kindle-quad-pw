@@ -65,7 +65,7 @@ DEFAULTS = {
     "full_every_min": 120,       # one flashing full refresh this often, to wipe ghosting
     "quiet": "",                 # "23-6" = no scheduled updates overnight
     "dark": False,
-    "feeds": ["world", "us", "markets"],
+    "feeds": ["g1", "g1_economia", "agencia_brasil"],   # keys of sources.FEEDS
     "max_age_h": 18,
     "news_pages": 4,
     "tickers": ["^GSPC", "^DJI", "^IXIC", "SOXL"],
@@ -83,6 +83,7 @@ DEFAULTS = {
     "iss": True, "launch": True,
     "llm_brief": True,
     "llm_brief_min": 60,
+    "brief_lang": "Brazilian Portuguese",
     "llm_model": "claude-haiku-4-5-20251001",
     "page_timeout_s": 180,       # detail pages fall back to the quad after this
     "notes": True,               # show note-box notes when they arrive (needs QUAD_NOTES_DB)
@@ -636,7 +637,7 @@ class H(BaseHTTPRequestHandler):
                     "error": sky.last_error if sky else None},
             "events": events.status if events else None,
         }
-        st["feeds"] = {k: v[0] for k, v in S.WSJ_FEEDS.items()}
+        st["feeds"] = {k: v[0] for k, v in S.FEEDS.items()}
         st["teams"] = {"g4": "Brasileirão G4 (live table)",
                        **{k: v[0] for k, v in S.TEAMS.items() if not k.startswith("bra_")}}
         st["panels"] = list(R.PANELS)

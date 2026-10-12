@@ -16,7 +16,7 @@ An e-paper kitchen dashboard for the Seeed reTerminal E1001. Four corners of you
 | Corner | Shows |
 |---|---|
 | **Weather** | current conditions, rain chance for the next few hours, 3-day forecast, 15-minute rain nowcast, official alerts (INMET in Brazil, NWS in the US) |
-| **News & markets** | index and ticker moves, rotating WSJ headlines |
+| **News & markets** | index and ticker moves, rotating headlines (g1, Agência Brasil, Folha, BBC News Brasil; WSJ still available) |
 | **Your teams** | live score, last result or next game for any ESPN team, with TV and the betting line |
 | **Plane overhead** | airline, route, aircraft, altitude and which way to look, from live ADS-B. An ISS pass or a visible rocket launch takes this corner over |
 
@@ -50,7 +50,7 @@ A jailbroken first-gen **Kindle Paperwhite** works as a second screen: the serve
 
 ## Data sources
 
-All keyless: Open-Meteo (forecast + nowcast, worldwide), INMET (alerts, Brazil) or api.weather.gov (alerts, US), WSJ RSS, Yahoo Finance spark, ESPN's site API, adsb.lol + adsbdb, CelesTrak + Launch Library 2. The one-line brief uses the [`claude`](https://docs.claude.com/en/docs/claude-code) CLI if it's installed and logged in. Turn `llm_brief` off otherwise.
+All keyless: Open-Meteo (forecast + nowcast, worldwide), INMET (alerts, Brazil) or api.weather.gov (alerts, US), RSS from g1 / Agência Brasil / Folha / BBC News Brasil (or WSJ), Yahoo Finance spark, ESPN's site API, adsb.lol + adsbdb, CelesTrak + Launch Library 2. The one-line brief uses the [`claude`](https://docs.claude.com/en/docs/claude-code) CLI if it's installed and logged in. Turn `llm_brief` off otherwise.
 
 ## Setup
 

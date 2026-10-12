@@ -19,17 +19,17 @@ wx = S.Weather(temp=29, feels=33, code=2, is_day=lt.tm_hour in range(7, 19), hum
                        for i in range(24)],
                rain_note="Rain likely around 16:00",
                alerts=[("Tempestade", "INMET: Tempestade (Perigo) até 21:00", "Severe")])
-heads = [S.Headline(t, "world", now - 600 * i) for i, t in enumerate([
-    "Fed officials signal patience on further rate cuts as inflation cools unevenly",
-    "Oil slides as OPEC+ weighs another output increase",
-    "Chip stocks rally after strong outlook from equipment makers",
-    "Hurricane season's late surge puts Gulf Coast insurers on alert",
-    "Treasury yields climb for a third session",
-    "Retail sales beat forecasts, lifting consumer stocks",
-    "Europe's carmakers brace for new tariff round",
-    "Tech giants race to secure power for AI data centers",
-    "Housing starts fall to lowest level in a year",
-    "Airlines raise holiday fares as demand stays strong"])]
+heads = [S.Headline(t, "g1", now - 600 * i) for i, t in enumerate([
+    "Copom mantém Selic e sinaliza cautela com inflação de serviços",
+    "Petrobras anuncia redução no preço do diesel para distribuidoras",
+    "Senado aprova projeto que amplia isenção do Imposto de Renda",
+    "Frente fria derruba temperaturas no Sul e no Sudeste nesta semana",
+    "Dólar fecha em queda e Ibovespa renova máxima do ano",
+    "Vendas no varejo sobem acima do esperado em agosto",
+    "Governo lança programa de crédito para pequenas empresas",
+    "STF retoma julgamento sobre marco temporal",
+    "Exportações do agronegócio batem recorde no trimestre",
+    "Companhias aéreas ampliam voos para o fim de ano"])]
 qs = [S.Quote(sym, name, p, p / (1 + c / 100), [p / (1 + c / 100) * (1 + c / 100 * k / 77) for k in range(78)], "open", now)
       for sym, name, p, c in [("^GSPC", "S&P 500", 6712.4, 0.42), ("^DJI", "Dow", 46210.1, -0.18),
                               ("^IXIC", "Nasdaq", 22950.7, 0.91), ("SOXL", "SOXL", 38.12, 3.4)]]
