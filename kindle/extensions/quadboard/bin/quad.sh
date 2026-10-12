@@ -29,6 +29,7 @@ LOG=$EXT/quad.log
 : "${POWER:=auto}"                # auto | usb | battery
 : "${AWAKE_S:=25}"                # on battery: stay awake this long after a wake or a tap
 : "${HOLD_S:=3}"                  # hold a finger this long to quit
+: "${GIVEUP_S:=60}"               # no answer from SERVER this long after Start = back to the Kindle (0 = never)
 : "${TOUCH_DEV:=}"                # blank = find it
 : "${RTC:=}"                      # blank = rtc1 if present, else rtc0
 
@@ -214,6 +215,23 @@ run() {
     log "touch: $dev"
     touch_loop "$dev" run &
     TPID=$!
+
+    # A wrong SERVER would otherwise leave a blank screen with the Kindle UI
+    # gone. Keep trying /healthz for GIVEUP_S, then hand the Kindle back.
+    # (A long press still quits while we wait.)
+    if [ "$GIVEUP_S" -gt 0 ] 2>/dev/null; then
+        t0=$(date +%s)
+        until fetch "$SERVER/healthz" "$RUN/healthz" 10 && grep -q ok "$RUN/healthz" 2>/dev/null; do
+            if [ $(($(date +%s) - t0)) -ge "$GIVEUP_S" ]; then
+                log "no answer from $SERVER in ${GIVEUP_S}s: check SERVER in quad.conf; back to the Kindle"
+                say "Quad Board: $SERVER not answering. Check quad.conf."
+                nap 5
+                cleanup
+            fi
+            nap 5
+        done
+        log "server $SERVER answered"
+    fi
 
     V=0; BOOT=1; FAILS=0
     woke=$(date +%s)
