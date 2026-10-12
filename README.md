@@ -72,7 +72,7 @@ Open `http://127.0.0.1:8740/?k=<QUAD_ADMIN>` to set your location, units, feeds,
 
 **Preview without hardware:** `python cases.py` renders every screen with live data to `case_*.png`.
 
-**Your teams:** the built-in keys are the Tampa ones (`bucs`, `lightning`, `rays`, `gators_fb`, `gators_bb`). Add your own in `config.json` with ESPN's sport, league and team id or abbreviation:
+**Your teams:** this edition defaults to the Brasileirão: `bahia`, `sao_paulo` and `g4`, which pulls in whoever is in the top four of ESPN's live `bra.1` table (set `g4_size` to change how many). Soccer teams show their table position and points, and their Libertadores, Sul-Americana and Copa do Brasil games too. The original Tampa keys (`bucs`, `lightning`, `rays`, `gators_fb`, `gators_bb`) are still there. Add your own in `config.json` with ESPN's sport, league and team id or abbreviation, e.g. `"flamengo": ["Flamengo", "soccer", "bra.1", "819"]` (the id is in the club's espn.com.br URL):
 
 ```json
 {
@@ -101,7 +101,7 @@ On first boot the board opens a Wi-Fi setup portal named `QuadBoard-XXXX`. Join 
 ## Notes
 
 - Times use the server's `TZ` (defaults to `America/Sao_Paulo`). Market hours are always NYSE's.
-- Units default to °C and km/h; switch to °F / mph on the dashboard.
+- Units default to °C and km/h, and the clock to 24-hour; both switch on the dashboard.
 - The notes feature reads a separate "note box" project's database and is off unless `QUAD_NOTES_DB` is set.
 - Team logos and airline logos are downloaded at runtime and cached in `server/cache/`. None are shipped in this repo.
 

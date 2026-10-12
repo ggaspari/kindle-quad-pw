@@ -54,6 +54,7 @@ DEFAULTS = {
     "city": "Tampa",             # named in the Claude brief's prompt
     "lat": 27.9506, "lon": -82.4572,
     "units": "C",                # C = °C and km/h; F = °F and mph
+    "clock": "24",               # 24 | 12
     "alerts": "auto",            # auto (NWS in the US, INMET in Brazil) | nws | inmet | off
     "alert_geocode": "",         # optional IBGE city code, for INMET alerts without a polygon
     "slots": ["weather", "news", "sports", "sky"],
@@ -68,7 +69,8 @@ DEFAULTS = {
     "max_age_h": 18,
     "news_pages": 4,
     "tickers": ["^GSPC", "^DJI", "^IXIC", "SOXL"],
-    "teams": ["bucs", "lightning", "rays", "gators_fb", "gators_bb"],
+    "teams": ["bahia", "sao_paulo", "g4"],   # "g4" = the Brasileirão's current top four
+    "g4_size": 4,                # how many from the top of the table "g4" brings in
     # your own ESPN teams: {"key": ["Label", "sport", "league", "espn team id or abbr"]},
     # e.g. {"bears": ["Bears", "football", "nfl", "chi"]}; then add "bears" to teams
     "custom_teams": {},
@@ -117,6 +119,7 @@ def save_json(path, obj):
 
 
 cfg = {**DEFAULTS, **load_json(CONFIG_PATH, {})}
+S.CLOCK24 = cfg.get("clock") != "12"
 S.TEAMS.update({k: tuple(v) for k, v in cfg.get("custom_teams", {}).items()})
 
 
@@ -634,7 +637,8 @@ class H(BaseHTTPRequestHandler):
             "events": events.status if events else None,
         }
         st["feeds"] = {k: v[0] for k, v in S.WSJ_FEEDS.items()}
-        st["teams"] = {k: v[0] for k, v in S.TEAMS.items()}
+        st["teams"] = {"g4": "Brasileirão G4 (live table)",
+                       **{k: v[0] for k, v in S.TEAMS.items() if not k.startswith("bra_")}}
         st["panels"] = list(R.PANELS)
         st["notes_available"] = bool(nb is not None and notes_db() is not None)
         return st
@@ -669,6 +673,7 @@ class H(BaseHTTPRequestHandler):
         rewx = moved or any(new[k] != cfg[k] for k in ("units", "alerts", "alert_geocode"))
         cfg.clear()
         cfg.update(new)
+        S.CLOCK24 = cfg.get("clock") != "12"
         S.TEAMS.update({k: tuple(v) for k, v in cfg.get("custom_teams", {}).items()})
         save_json(CONFIG_PATH, {k: v for k, v in cfg.items() if DEFAULTS.get(k) != v})
         if moved:

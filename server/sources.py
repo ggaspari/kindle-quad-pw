@@ -273,9 +273,8 @@ def _parse_inmet(d, lat, lon, geocode="", now=None):
             continue
         sev_pt = str(_pick(a, "severidade", "severity", "nivel") or "").strip()
         event = str(_pick(a, "descricao", "evento", "event", "titulo") or "Aviso").strip()
-        hm24 = lambda t: time.strftime("%H:%M", time.localtime(t))   # pt-BR text, 24h clock
-        until = f" até {hm24(end)}" if end else ""
-        soon = f" a partir de {hm24(start)}" if start and start > now else ""
+        until = f" até {_hm(end)}" if end else ""
+        soon = f" a partir de {_hm(start)}" if start and start > now else ""
         out.append((event, f"INMET: {event} ({sev_pt or 'aviso'}){soon}{until}",
                     INMET_SEV.get(sev_pt.lower(), "Moderate")))
     rank = {"Extreme": 0, "Severe": 1, "Moderate": 2, "Minor": 3}
@@ -302,11 +301,22 @@ def alert_source(cfg):
     return "off"
 
 
+CLOCK24 = True     # 24-hour clock everywhere; app.py sets it from cfg["clock"]
+
+
 def _hm(epoch):
     if not epoch:
         return ""
     t = time.localtime(epoch)
+    if CLOCK24:
+        return f"{t.tm_hour:02d}:{t.tm_min:02d}"
     return f"{t.tm_hour % 12 or 12}:{t.tm_min:02d} {'AM' if t.tm_hour < 12 else 'PM'}"
+
+
+def hour_label(epoch):
+    """Axis label for one hour: '16h' or '4p'."""
+    h = time.localtime(epoch).tm_hour
+    return f"{h}h" if CLOCK24 else f"{h % 12 or 12}{'a' if h < 12 else 'p'}"
 
 
 _weather = Cached(600)
@@ -511,7 +521,16 @@ TEAMS = {
     "gators_fb": ("Gators", "football", "college-football", "57"),
     "gators_bb": ("Gators Hoops", "basketball", "mens-college-basketball", "57"),
     "gators_wbb": ("Gators WBB", "basketball", "womens-college-basketball", "57"),
+    # Brasileirão (ESPN league bra.1). "g4" in cfg["teams"] adds the current top
+    # four from the live table; they get keys like "bra_819" on the fly.
+    "bahia": ("Bahia", "soccer", "bra.1", "9967"),
+    "sao_paulo": ("São Paulo", "soccer", "bra.1", "2026"),
 }
+
+# Cup games for Brazilian clubs live under other ESPN leagues; a team's page
+# under bra.1 only lists league games, so soccer teams also check these.
+SOCCER_CUPS = {"conmebol.libertadores": "Libertadores", "conmebol.sudamericana": "Sul-Americana",
+               "bra.copa_do_brazil": "Copa do Brasil"}
 
 
 @dataclass
@@ -549,11 +568,18 @@ class Game:
     def result(self):
         if self.state != "post" or self.us is None:
             return ""
-        return "W" if self.us > self.them else ("L" if self.us < self.them else "T")
+        return "W" if self.us > self.them else ("L" if self.us < self.them else "D" if self.soccer else "T")
+
+    @property
+    def soccer(self):
+        return TEAMS.get(self.key, ("", ""))[1] == "soccer"
+    key: str = ""
 
 
 def _espn(url, params=None):
     # site.api 403s a browser UA; plain requests UA is fine.
+    if "/soccer/bra." in url or "/soccer/conmebol." in url:
+        params = {**(params or {}), "lang": "pt", "region": "br"}     # ESPN Brasil names and news
     r = requests.get(url, params=params, headers={"User-Agent": UA_BOT}, timeout=10)
     r.raise_for_status()
     return r.json()
@@ -605,7 +631,7 @@ def _parse_event(key, e, record=""):
         ls = t.get("logos") or []
         return (ls[0].get("href") if ls else t.get("logo")) or ""
     start = calendar.timegm(time.strptime(e["date"][:16], "%Y-%m-%dT%H:%M"))
-    return Game(team=label, abbr=(ours.get("team", {}).get("abbreviation") or ""),
+    return Game(key=key, team=label, abbr=(ours.get("team", {}).get("abbreviation") or ""),
                 opp=ot.get("abbreviation") or "TBD", opp_name=ot.get("shortDisplayName") or ot.get("name") or "TBD",
                 home=ours.get("homeAway") == "home", start=start, state=st.get("state", "pre"),
                 detail=st.get("shortDetail", ""), us=score(ours) if st.get("state") != "pre" else None,
@@ -627,9 +653,22 @@ def _fetch_team(key):
     team_logo = next((l["href"] for l in t.get("logos") or [] if "default" in (l.get("rel") or [])),
                      (t.get("logos") or [{}])[0].get("href", ""))
     games = [_parse_event(key, e, rec) for e in t.get("nextEvent") or []]
+    if sport == "soccer":
+        # soccer schedules come in two halves: results, and fixtures=true for
+        # what's next; plus the cups, which sit under their own leagues
+        for lg, cup in [(league, "")] + [(c, n) for c, n in SOCCER_CUPS.items() if c != league]:
+            for fx in (None, {"fixture": "true"}):
+                try:
+                    sched = _espn(f"https://site.api.espn.com/apis/site/v2/sports/soccer/{lg}/teams/{tid}/schedule", fx)
+                except Exception:
+                    continue
+                for e in sched.get("events", []):
+                    g = _parse_event(key, e, rec)
+                    g.note = g.note or cup
+                    games.append(g)
     # Schedule for the last result. Try postseason too: team pages drop the
     # regular-season schedule's playoff games into a separate seasontype.
-    for st in ("", "3"):
+    for st in (("", "3") if sport != "soccer" else ()):
         try:
             sched = _espn(base + "/schedule", {"seasontype": st} if st else None)
             for e in sched.get("events", []):
@@ -735,7 +774,7 @@ class Odds:
         """What the corner shows. Hockey/baseball are moneyline sports."""
         if style == "winpct" and self.win_pct is not None:
             return f"{self.win_pct}% to win"
-        if (style == "moneyline" or sport in ("hockey", "baseball")) and self.ml_us is not None:
+        if (style == "moneyline" or sport in ("hockey", "baseball", "soccer")) and self.ml_us is not None:
             return f"{abbr} {self.ml_us:+d}"
         if self.spread_us is not None:
             return f"{abbr} {self.spread_us:+g}".replace("+0", "PK")
@@ -792,17 +831,112 @@ def attach_odds(key, g: Game):
     g.odds = c.get(fetch_odds)
 
 
+# ------------------------------------------------------------ Brasileirão table
+
+@dataclass
+class Standing:
+    tid: str
+    name: str
+    rank: int
+    points: int
+
+
+def _stat(entry, *names):
+    for s in entry.get("stats") or []:
+        if s.get("name") in names or s.get("type") in names:
+            try:
+                return int(float(s.get("value", s.get("displayValue"))))
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+def _parse_standings(d):
+    """[Standing] in table order from ESPN's standings JSON (entries may sit
+    at the top level or under children[0])."""
+    groups = [d] + list(d.get("children") or [])
+    entries = []
+    for g in groups:
+        entries = ((g.get("standings") or {}).get("entries") or [])
+        if entries:
+            break
+    out = []
+    for i, e in enumerate(entries):
+        t = e.get("team") or {}
+        if not t.get("id"):
+            continue
+        out.append(Standing(tid=str(t["id"]), name=t.get("shortDisplayName") or t.get("displayName") or "?",
+                            rank=_stat(e, "rank") or i + 1, points=_stat(e, "points") or 0))
+    out.sort(key=lambda s: s.rank)
+    return out
+
+
+def _fetch_standings(league):
+    err = None
+    for host in ("site.api.espn.com", "site.web.api.espn.com"):
+        try:
+            table = _parse_standings(_espn(f"https://{host}/apis/v2/sports/soccer/{league}/standings"))
+            if table:
+                return table
+        except Exception as e:
+            err = e
+    raise err or RuntimeError("empty table")
+
+
+_standings: dict[str, Cached] = {}
+
+
+def standings(league="bra.1", force=False) -> list:
+    c = _standings.setdefault(league, Cached(3600))
+
+    def fetch():
+        return _fetch_standings(league)
+    fetch.__name__ = f"table_{league}"
+    return c.get(fetch, force) or []
+
+
+def _team_key(league, tid, name):
+    """The TEAMS key for an ESPN team, registering one if it's new."""
+    for k, v in TEAMS.items():
+        if v[1] == "soccer" and v[2] == league and v[3] == tid:
+            return k
+    k = f"bra_{tid}"
+    TEAMS[k] = (name, "soccer", league, tid)
+    return k
+
+
+def team_keys(cfg, force=False):
+    """cfg["teams"] with "g4" expanded to the current top of the table."""
+    out = []
+    for key in cfg.get("teams", []):
+        if key == "g4":
+            try:
+                for s in standings("bra.1", force)[:max(1, int(cfg.get("g4_size", 4)))]:
+                    out.append(_team_key("bra.1", s.tid, s.name))
+            except Exception as e:
+                print(f"[table] {e}", flush=True)
+        elif key in TEAMS:
+            out.append(key)
+    return list(dict.fromkeys(out))      # São Paulo in the G4 shows once
+
+
 def sports(cfg, force=False):
     """[TeamRow] ordered live -> fresh results -> soonest next game, plus the
     keys of teams playing right now (the caller refreshes faster then)."""
     now = time.time()
     rows, live = [], []
     horizon = cfg.get("horizon_days", 21) * 86400
-    for key in cfg.get("teams", []):
-        if key not in TEAMS:
-            continue
+    table = {}
+    if any(TEAMS.get(k, ("", "", ""))[2] == "bra.1" for k in cfg.get("teams", [])) or "g4" in cfg.get("teams", []):
+        try:
+            table = {s.tid: s for s in standings("bra.1", force)}
+        except Exception as e:
+            print(f"[table] {e}", flush=True)
+    for key in team_keys(cfg, force):
         games = team_games(key, fast=key in _live_keys, force=force)
-        row = TeamRow(key=key, label=TEAMS[key][0], record=games[0].record if games else "",
+        st = table.get(TEAMS[key][3]) if TEAMS[key][2] == "bra.1" else None
+        row = TeamRow(key=key, label=TEAMS[key][0],
+                      record=f"{st.rank}º · {st.points} pts" if st else (games[0].record if games else ""),
                       logo=next((g.our_logo for g in games if g.our_logo), ""))
         row.live = next((g for g in games if g.state == "in"), None)
         done = [g for g in games if g.state == "post"]
@@ -840,6 +974,8 @@ _live_keys: set = set()
 
 def sports_status():
     out = {k: c.status() for k, c in _teams.items()}
+    for lg, c in _standings.items():
+        out["table_" + lg] = c.status()
     if _odds:
         errs = [c.error for c in _odds.values() if c.error]
         ages = [c.status()["age_s"] for c in _odds.values() if c.at]
@@ -880,11 +1016,11 @@ def brief(cfg, heads, wx, games, force=False) -> str:
                 parts.append(f"{r.label} {r.last.result} {r.last.us}-{r.last.them} vs {r.last.opp_name}")
             if r.next:
                 ln = f" ({r.next.odds.details}, O/U {r.next.odds.total:g})" if r.next.odds and r.next.odds.total else ""
-                parts.append(f"{r.label} next vs {r.next.opp_name} {time.strftime('%a %I:%M %p', time.localtime(r.next.start))}{ln}")
+                parts.append(f"{r.label} next vs {r.next.opp_name} {time.strftime('%a ' + ('%H:%M' if CLOCK24 else '%I:%M %p'), time.localtime(r.next.start))}{ln}")
         g = "; ".join(parts)
         prompt = (
             f"You write the one-line briefing on a small e-paper kitchen display in {city}. "
-            f"It is {time.strftime('%A %I:%M %p')}. Using ONLY the facts below, write ONE plain sentence, "
+            f"It is {time.strftime('%A ' + ('%H:%M' if CLOCK24 else '%I:%M %p'))}. Using ONLY the facts below, write ONE plain sentence, "
             "max 115 characters, no emoji, no quotes, no preamble. Lead with what matters most today: "
             "severe weather beats everything; then a local team playing today/tonight; otherwise the most "
             "consequential news story. Don't restate routine weather unless rain or heat is notable.\n\n"

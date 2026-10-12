@@ -127,6 +127,7 @@ td:first-child{font-weight:600;white-space:nowrap}
         <label>Label<input name="label"></label>
         <label>City (for the brief)<input name="city"></label>
         <label>Units<select name="units"><option value="C">°C, km/h</option><option value="F">°F, mph</option></select></label>
+        <label>Clock<select name="clock"><option value="24">24-hour (19:30)</option><option value="12">12-hour (7:30 PM)</option></select></label>
         <label>Weather alerts<select name="alerts"><option value="auto">Auto (by location)</option>
           <option value="inmet">INMET (Brazil)</option><option value="nws">NWS (US)</option><option value="off">Off</option></select></label>
         <label>IBGE city code (optional)<input name="alert_geocode" placeholder="3550308"></label>
@@ -159,6 +160,7 @@ td:first-child{font-weight:600;white-space:nowrap}
       <div class="checks" id="teams"></div>
       <div class="grid2">
         <label>Show next game if within (days)<input type="number" name="horizon_days" min="1" max="120"></label>
+        <label>Brasileirão "G4" size<input type="number" name="g4_size" min="1" max="8"></label>
       </div>
       <label class="inline" style="margin-top:8px"><input type="checkbox" name="show_idle"> Show teams with nothing scheduled</label>
       <label class="inline"><input type="checkbox" name="sports_logos"> Team logos</label>
