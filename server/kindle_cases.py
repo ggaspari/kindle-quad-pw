@@ -30,9 +30,9 @@ heads = [S.Headline(t, "g1", now - 600 * i) for i, t in enumerate([
     "STF retoma julgamento sobre marco temporal",
     "Exportações do agronegócio batem recorde no trimestre",
     "Companhias aéreas ampliam voos para o fim de ano"])]
-qs = [S.Quote(sym, name, p, p / (1 + c / 100), [p / (1 + c / 100) * (1 + c / 100 * k / 77) for k in range(78)], "open", now)
-      for sym, name, p, c in [("^GSPC", "S&P 500", 6712.4, 0.42), ("^DJI", "Dow", 46210.1, -0.18),
-                              ("^IXIC", "Nasdaq", 22950.7, 0.91), ("SOXL", "SOXL", 38.12, 3.4)]]
+qs = [S.Quote(sym, name, p, p / (1 + c / 100), [p / (1 + c / 100) * (1 + c / 100 * k / (n - 1)) for k in range(n)], "open", now)
+      for sym, name, p, c, n in [("^BVSP", "Ibovespa", 145320.4, 0.85, 50), ("BRL=X", "Dólar", 5.4321, -0.69, 200),
+                                 ("IFIX.SA", "IFIX", 3975.77, 0.14, 50), ("BTC-BRL", "Bitcoin", 612345.9, 2.06, 288)]]
 S.TEAMS.update({"bucs": ("Bucs", "football", "nfl", "tb"), "rays": ("Rays", "baseball", "mlb", "tb"),
                 "lightning": ("Lightning", "hockey", "nhl", "tb")})
 g = lambda **k: S.Game(**{"team": "", "abbr": "TB", "opp": "NO", "opp_name": "Saints", "home": True,

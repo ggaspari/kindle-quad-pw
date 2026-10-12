@@ -473,7 +473,7 @@ def _quote_cell(d, x, y, cw, q, spark_h=0, c=None):
     fname = F("cm", 15)
     text(d, (x + cw / 2, y), ellipsize(d, q.name, fname, cw - 4), fname, anchor="ma")
     pct = q.chg_pct
-    s = f"{abs(pct):.2f}%"
+    s = f"{sources.fmt(abs(pct))}%"
     f = F("cb", 20)
     wv = tw(d, s, f) + 13
     sx = x + (cw - wv) / 2
@@ -481,13 +481,13 @@ def _quote_cell(d, x, y, cw, q, spark_h=0, c=None):
         tri(d, sx, y + 23, 9, pct > 0)
     text(d, (sx + 13, y + 17), s, f)
     p = q.price
-    ps = f"{p:,.0f}" if p >= 1000 else f"{p:,.2f}"
+    ps = sources.fmt(p, 0 if p >= 1000 else 2)
     text(d, (x + cw / 2, y + 40), ps, F("cr", 15), anchor="ma")
     if spark_h and q.spark and len(q.spark) > 2:
         sy0, sy1 = y + 60, y + 60 + spark_h
         lo, hi = min(q.spark + [q.prev]), max(q.spark + [q.prev])
         rng = (hi - lo) or 1
-        n = 78   # a full session is 78 five-minute bars
+        n = max(sources.SESSION_BARS[sources.market(q.symbol)], len(q.spark))   # a full day, in 5-min bars
 
         def P(i, v):
             return (x + 6 + (cw - 12) * i / (n - 1), sy1 - (v - lo) / rng * (sy1 - sy0))
@@ -971,7 +971,10 @@ def detail_news(ctx, size):
             if i:
                 d.line((i * cw, y + 2, i * cw, y + 90), fill=INK, width=1)
         y += 98
-        state = "Market open" if any(q.state == "open" for q in qs) else "Market closed"
+        # the first ticker with trading hours names the session (crypto never closes)
+        lead = next((q for q in qs if sources.market(q.symbol) != "crypto"), qs[0])
+        mk = {"b3": "B3", "us": "NYSE", "fx": "FX", "crypto": "Crypto"}[sources.market(lead.symbol)]
+        state = f"{mk} {'open' if lead.state == 'open' else 'closed'}"
         text(d, (w - 12, y - 8), state, F("cm", 13), anchor="rd")
         d.line((8, y, w - 8, y), fill=INK, width=2)
         y += 8
