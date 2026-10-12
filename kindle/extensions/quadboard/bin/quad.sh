@@ -35,6 +35,19 @@ LOG=$EXT/quad.log
 
 log() { echo "$(date '+%m-%d %H:%M:%S') $*" >> "$LOG" 2>/dev/null; }
 
+# The PW1's busybox ash answers `command -v` with nothing at all, so look on
+# PATH ourselves (busybox applets are symlinks there).
+have() {
+    command -v "$1" >/dev/null 2>&1 && return 0
+    _ifs=$IFS; IFS=:
+    for _d in $PATH; do
+        if [ -x "$_d/$1" ]; then IFS=$_ifs; return 0; fi
+    done
+    IFS=$_ifs
+    return 1
+}
+where() { have "$1" && { command -v "$1" 2>/dev/null || echo yes; } || echo MISSING; }
+
 # ---------------------------------------------------------------- helpers
 
 # fetch URL OUT SECONDS -- busybox wget may lack -T, so watchdog it ourselves
@@ -176,14 +189,74 @@ NF >= 8 {
 }
 END { printf "STATE %d %d %d %.3f %d %d\n", down, x, y, ts, explicit, fp }'
 
-if command -v hexdump >/dev/null 2>&1; then
-    words() { hexdump -v -e '8/2 "%u " "\n"'; }
-else
-    words() { od -v -d; }        # offset column + 8 words; awk takes the last 8
-fi
+# Binary events -> "8 unsigned 16-bit words" per line. Which tool can do
+# that differs per firmware (the PW1's busybox has no od, maybe no hexdump),
+# so pick_words tries each one on a known sample and keeps the first that
+# gets it right.
+B64_AWK='
+BEGIN { a = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+        for (i = 0; i < 64; i++) val[substr(a, i + 1, 1)] = i; n = 0; acc = 0; bits = 0
+        pw[0] = 1; for (i = 1; i < 16; i++) pw[i] = pw[i - 1] * 2 }      # no ^: busybox awk may lack math
+/^begin/ || /^====/ { next }
+{ for (i = 1; i <= length($0); i++) {
+      c = substr($0, i, 1)
+      if (c == "=") { acc = 0; bits = 0; continue }
+      if (!(c in val)) continue
+      acc = acc * 64 + val[c]; bits += 6
+      if (bits >= 8) { bits -= 8; p = pw[bits]; by[n++] = int(acc / p) % 256; acc = acc % p }
+  } }
+END { for (i = 0; i + 15 < n; i += 16) {
+          l = ""; for (j = 0; j < 16; j += 2) l = l (j ? " " : "") (by[i + j] + by[i + j + 1] * 256)
+          print l } }'
+# cmp -l lists only the bytes that differ from /dev/zero: offset (1-based) and octal value
+CMP_AWK='
+function oct(s,  r, k) { r = 0; for (k = 1; k <= length(s); k++) r = r * 8 + substr(s, k, 1); return r }
+$1 ~ /^[0-9]+$/ { by[$1 - 1] = oct($2) }
+END { for (i = 0; i + 15 < n; i += 16) {
+          l = ""; for (j = 0; j < 16; j += 2) l = l (j ? " " : "") (by[i + j] + by[i + j + 1] * 256)
+          print l } }'
+
+words_with() {
+    case "$1" in
+        hexdump) hexdump -v -e '8/2 "%u " "\n"' ;;
+        bb-hexdump) busybox hexdump -v -e '8/2 "%u " "\n"' ;;
+        od) od -v -t u2 ;;
+        od-d) od -v -d ;;
+        bb-od) busybox od -v -t u2 ;;
+        base64) base64 | awk "$B64_AWK" ;;
+        bb-base64) busybox base64 | awk "$B64_AWK" ;;
+        uuencode) uuencode -m - | awk "$B64_AWK" ;;
+        bb-uuencode) busybox uuencode -m - | awk "$B64_AWK" ;;
+        cmp) cat > "$RUN/chunk.bin"
+             cmp -l "$RUN/chunk.bin" /dev/zero 2>/dev/null | awk -v n="$(wc -c < "$RUN/chunk.bin")" "$CMP_AWK" ;;
+        bb-cmp) cat > "$RUN/chunk.bin"
+             busybox cmp -l "$RUN/chunk.bin" /dev/zero 2>/dev/null | awk -v n="$(wc -c < "$RUN/chunk.bin")" "$CMP_AWK" ;;
+    esac
+}
+
+WORDS=
+pick_words() {
+    mkdir -p "$RUN"
+    # two events' worth: 1..7 and 65535 (unsigned!), then 0s and 258
+    printf '\001\000\002\000\003\000\004\000\005\000\006\000\007\000\377\377\000\000\000\000\000\000\000\000\000\000\000\000\000\000\002\001' \
+        > "$RUN/probe.bin"
+    want="1 2 3 4 5 6 7 65535|0 0 0 0 0 0 0 258|"
+    for m in hexdump bb-hexdump od od-d bb-od base64 bb-base64 uuencode bb-uuencode cmp bb-cmp; do
+        got=$(words_with "$m" < "$RUN/probe.bin" 2>/dev/null |
+              awk 'NF >= 8 { o = NF - 8; printf "%s %s %s %s %s %s %s %s|", $(o+1), $(o+2), $(o+3), $(o+4), $(o+5), $(o+6), $(o+7), $(o+8) }')
+        if [ "$got" = "$want" ]; then WORDS=$m; return 0; fi
+    done
+    return 1
+}
+
+words() { words_with "$WORDS"; }
 
 # touch_loop DEV ACTION -- ACTION is "run" (send taps) or "test" (dry-run, log only)
 touch_loop() {
+    if [ -z "$WORDS" ] && ! pick_words; then
+        log "no tool here can decode touch events (tried hexdump, od, base64, uuencode, cmp); taps won't work"
+        return 1
+    fi
     exec 3< "$1"
     st="0 0 0 0 0 0"
     while :; do
@@ -217,7 +290,7 @@ framework_stop() {
     elif [ -x /etc/init.d/framework ] && /etc/init.d/framework stop >> "$LOG" 2>&1; then
         log "kindle UI stopped (init.d)"
     else
-        log "could NOT stop the kindle UI (stop: $(command -v stop || echo missing))"
+        log "could NOT stop the kindle UI (stop: $(where stop))"
     fi
     usleep 1500000 2>/dev/null || sleep 2
 }
@@ -240,7 +313,7 @@ cleanup() {
 run() {
     trap "" TERM HUP        # survive KUAL closing and the UI shutting down; cleanup takes over below
     echo $$ > "$PIDF"
-    log "starting: server $SERVER, fbink ${FBINK:-none (eips: $(command -v eips || echo missing))}"
+    log "starting: server $SERVER, fbink ${FBINK:-none (eips: $(where eips))}"
     log "input devices: $(input_names)"
     dev=$(find_touch)
     # without a touchscreen there'd be no way back (taps and the long press
@@ -251,7 +324,13 @@ run() {
         rm -f "$PIDF"
         exit 1
     fi
-    log "touch: $dev"
+    # ...and that something here can decode its events (the PW1 has no od)
+    if ! pick_words; then
+        log "no tool here can decode touch events (tried hexdump, od, base64, uuencode, cmp): NOT starting"
+        rm -f "$PIDF"
+        exit 1
+    fi
+    log "touch: $dev, events decoded with $WORDS"
     log "power: $(power_why)"
     framework_stop
     trap cleanup TERM INT HUP
@@ -334,9 +413,9 @@ case "$1" in
         # background job is fine there, since run() ignores TERM/HUP from its
         # first line. (Ignoring them here instead would stick: a shell can't
         # re-trap signals that were ignored when it started, and Stop needs TERM.)
-        if command -v setsid >/dev/null 2>&1; then
+        if have setsid; then
             setsid sh "$RUN/quad.sh" run >> "$LOG" 2>&1 < /dev/null &
-        elif command -v nohup >/dev/null 2>&1; then
+        elif have nohup; then
             nohup sh "$RUN/quad.sh" run >> "$LOG" 2>&1 < /dev/null &
         else
             sh "$RUN/quad.sh" run >> "$LOG" 2>&1 < /dev/null &
@@ -367,15 +446,20 @@ case "$1" in
         log "=== diag: PATH=$PATH"
         for t in sh busybox wget hexdump od awk dd sed tr setsid nohup start-stop-daemon usleep eips fbink \
                  lipc-get-prop lipc-set-prop stop start initctl; do
-            log "  $t: $(command -v "$t" || echo MISSING)"
+            log "  $t: $(where "$t")"
         done
         log "  fbink in use: ${FBINK:-none}"
+        for bb in busybox /bin/busybox /usr/bin/busybox; do
+            l=$($bb --list 2>/dev/null | tr '\n' ' ')
+            [ -n "$l" ] && { log "  busybox applets ($bb): $l"; break; }
+        done
+        if pick_words; then log "  touch decoder: $WORDS"; else log "  touch decoder: NONE works"; fi
         log "  kindle UI jobs: $(initctl list 2>/dev/null | grep -iE 'lab126_gui|framework' | tr '\n' ';')"
         log "  battery $(battery)%, charging=$(lipc-get-prop com.lab126.powerd isCharging 2>/dev/null), wifi=$(lipc-get-prop com.lab126.wifid cmState 2>/dev/null)"
         log "  server: $(wget -q -O - "$SERVER/healthz" 2>&1 | head -c 80)"
         log "  rtc: $(echo /sys/class/rtc/rtc*)"
         log "  input devices:"
-        grep -E '^(N|H):' /proc/bus/input/devices 2>/dev/null | while read -r ln; do log "    $ln"; done
+        sed -n '/^[NH]:/p' /proc/bus/input/devices 2>/dev/null | while read -r ln; do log "    $ln"; done
         dev=$(find_touch)
         log "  touch device picked: $dev; raw events for 10 s, tap the screen a few times:"
         dd if="$dev" of="$RUN/raw.bin" bs=16 count=200 2>/dev/null &
@@ -383,7 +467,7 @@ case "$1" in
         sleep 10
         kill $dp 2>/dev/null
         log "  $(wc -c < "$RUN/raw.bin" 2>/dev/null || echo 0) bytes; first events (sec usec type code value as 8 words):"
-        words < "$RUN/raw.bin" 2>/dev/null | head -n 40 | while read -r ln; do log "    $ln"; done
+        [ -n "$WORDS" ] && words < "$RUN/raw.bin" 2>/dev/null | head -n 40 | while read -r ln; do log "    $ln"; done
         log "=== diag done"
         ;;
     status)
