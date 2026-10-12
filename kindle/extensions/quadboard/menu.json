@@ -6,6 +6,8 @@
       "items": [
         {"name": "Start", "priority": 1, "action": "/bin/sh", "params": "/mnt/us/extensions/quadboard/bin/quad.sh start", "exitmenu": true},
         {"name": "Stop", "priority": 2, "action": "/bin/sh", "params": "/mnt/us/extensions/quadboard/bin/quad.sh stop"},
+        {"name": "Start at boot: on", "priority": 5, "action": "/bin/sh", "params": "/mnt/us/extensions/quadboard/bin/quad.sh autostart-on"},
+        {"name": "Start at boot: off", "priority": 6, "action": "/bin/sh", "params": "/mnt/us/extensions/quadboard/bin/quad.sh autostart-off"},
         {"name": "Touch test (30 s, see the dashboard)", "priority": 3, "action": "/bin/sh", "params": "/mnt/us/extensions/quadboard/bin/quad.sh touchtest"},
         {"name": "Diagnostics (10 s, tap the screen; writes quad.log)", "priority": 4, "action": "/bin/sh", "params": "/mnt/us/extensions/quadboard/bin/quad.sh diag"}
       ]

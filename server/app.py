@@ -31,6 +31,7 @@ if hasattr(time, "tzset"):
 
 from PIL import Image, ImageChops  # noqa: E402
 
+import adsb  # noqa: E402
 import kindle as KD  # noqa: E402
 import logos  # noqa: E402
 import render as R  # noqa: E402
@@ -638,7 +639,8 @@ class H(BaseHTTPRequestHandler):
         st["sources"] = {
             "weather": S._weather.status(), "alerts": S._alerts.status(), "news": S.news_status(),
             "quotes": S.quotes_status(), "sports": S.sports_status(), "brief": S.brief_status(),
-            "sky": {"age_s": round(now - sky.updated_at) if sky and sky.updated_at else None,
+            "sky": {"feeds": dict(adsb.FEED_STATUS), "sgp4": skyevents.HAVE_SGP4,
+                    "age_s": round(now - sky.updated_at) if sky and sky.updated_at else None,
                     "error": sky.last_error if sky else None},
             "events": events.status if events else None,
         }

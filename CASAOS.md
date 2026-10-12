@@ -65,6 +65,8 @@ sudo git pull
 sudo docker compose up -d --build
 ```
 
+Depois de uma atualização que mude dependências do servidor (por exemplo, o `sgp4` das passagens da ISS), o `--build` acima é o que instala a dependência nova.
+
 ## Observações
 
 - O resumo de uma linha escrito pelo Claude precisa do `claude` CLI, que não existe dentro do container. Por isso ele vem desligado: a faixa de cima mostra o próximo jogo ou a manchete principal.
