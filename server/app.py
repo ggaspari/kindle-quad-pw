@@ -68,7 +68,8 @@ DEFAULTS = {
     "feeds": ["g1", "g1_economia", "agencia_brasil"],   # keys of sources.FEEDS
     "max_age_h": 18,
     "news_pages": 4,
-    "tickers": ["^GSPC", "^DJI", "^IXIC", "SOXL"],
+    "tickers": ["^BVSP", "BRL=X", "IFIX.SA", "BTC-BRL"],   # Ibovespa, dólar, IFIX, bitcoin em reais
+    "number_format": "br",       # br = 1.234,56 | us = 1,234.56
     "teams": ["bahia", "sao_paulo", "g4"],   # "g4" = the Brasileirão's current top four
     "g4_size": 4,                # how many from the top of the table "g4" brings in
     # your own ESPN teams: {"key": ["Label", "sport", "league", "espn team id or abbr"]},
@@ -121,6 +122,7 @@ def save_json(path, obj):
 
 cfg = {**DEFAULTS, **load_json(CONFIG_PATH, {})}
 S.CLOCK24 = cfg.get("clock") != "12"
+S.DECIMAL_COMMA = cfg.get("number_format") != "us"
 S.TEAMS.update({k: tuple(v) for k, v in cfg.get("custom_teams", {}).items()})
 
 
@@ -675,6 +677,7 @@ class H(BaseHTTPRequestHandler):
         cfg.clear()
         cfg.update(new)
         S.CLOCK24 = cfg.get("clock") != "12"
+        S.DECIMAL_COMMA = cfg.get("number_format") != "us"
         S.TEAMS.update({k: tuple(v) for k, v in cfg.get("custom_teams", {}).items()})
         save_json(CONFIG_PATH, {k: v for k, v in cfg.items() if DEFAULTS.get(k) != v})
         if moved:

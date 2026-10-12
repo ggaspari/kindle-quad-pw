@@ -144,8 +144,9 @@ td:first-child{font-weight:600;white-space:nowrap}
         <label>Max headline age (h)<input type="number" name="max_age_h" min="1" max="96"></label>
         <label>Pages to rotate<input type="number" name="news_pages" min="1" max="10"></label>
       </div>
-      <label style="margin-top:10px">Tickers (Yahoo symbols, comma separated)<input name="tickers" placeholder="^GSPC, ^DJI, ^IXIC, SOXL"></label>
-      <p class="note">^GSPC = S&amp;P 500, ^DJI = Dow, ^IXIC = Nasdaq, ^RUT = Russell 2000, ^VIX, BTC-USD. Four or five fit best.</p>
+      <label style="margin-top:10px">Tickers (Yahoo symbols, comma separated)<input name="tickers" placeholder="^BVSP, BRL=X, IFIX.SA, BTC-BRL"></label>
+      <div class="grid2"><label>Numbers<select name="number_format"><option value="br">1.234,56</option><option value="us">1,234.56</option></select></label></div>
+      <p class="note">^BVSP = Ibovespa, BRL=X = dólar, EURBRL=X = euro, IFIX.SA = IFIX, BTC-BRL = bitcoin em reais, PETR4.SA / VALE3.SA = ações da B3; ^GSPC = S&amp;P 500, ^IXIC = Nasdaq. Four or five fit best.</p>
       <label class="inline" style="margin-top:12px"><input type="checkbox" name="llm_brief"> Claude writes a one-line daily brief (top bar)</label>
       <div class="grid2" style="margin-top:8px">
         <label>Rewrite every (min)<input type="number" name="llm_brief_min" min="15" max="720"></label>

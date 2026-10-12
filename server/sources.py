@@ -474,7 +474,53 @@ def news_status():
 
 TICKER_NAMES = {"^GSPC": "S&P 500", "^DJI": "Dow", "^IXIC": "Nasdaq", "^RUT": "Russell",
                 "^VIX": "VIX", "^NDX": "Nasdaq 100", "BTC-USD": "Bitcoin", "CL=F": "Oil",
-                "GC=F": "Gold", "^TNX": "10Y"}
+                "GC=F": "Gold", "^TNX": "10Y",
+                "^BVSP": "Ibovespa", "IFIX.SA": "IFIX", "XFIX11.SA": "XFIX11", "BRL=X": "Dólar",
+                "EURBRL=X": "Euro", "BTC-BRL": "Bitcoin", "ETH-BRL": "Ethereum"}
+
+DECIMAL_COMMA = True    # 5,43 and 145.320; app.py sets it from cfg["number_format"]
+
+
+def fmt(v, dec=2):
+    s = f"{v:,.{dec}f}"
+    return s.translate(str.maketrans(",.", ".,")) if DECIMAL_COMMA else s
+
+
+def market(sym):
+    """Which session a Yahoo symbol trades in: crypto | fx | b3 | us."""
+    if re.search(r"-(USD|BRL|EUR)$", sym):
+        return "crypto"
+    if sym.endswith("=X"):
+        return "fx"
+    if sym.endswith(".SA") or sym == "^BVSP":
+        return "b3"
+    return "us"
+
+
+# five-minute bars in one day's session, for the sparkline's x scale
+SESSION_BARS = {"crypto": 288, "fx": 288, "b3": 96, "us": 78}
+
+
+def _local(now, tz):
+    try:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        return datetime.fromtimestamp(now, ZoneInfo(tz)).timetuple()
+    except Exception:
+        return time.localtime(now)
+
+
+def market_open(sym, now=None):
+    now = now or time.time()
+    m = market(sym)
+    if m == "crypto":
+        return True
+    if m == "fx":
+        return _local(now, "America/Sao_Paulo").tm_wday < 5
+    if m == "b3":      # regular session 10:00-17:00/18:00 (it moves with US daylight time)
+        t = _local(now, "America/Sao_Paulo")
+        return t.tm_wday < 5 and 600 <= t.tm_hour * 60 + t.tm_min < 1080
+    return _us_market_open(now)
 
 
 @dataclass
@@ -516,10 +562,7 @@ def _fetch_quotes(syms):
             continue
         closes = [c for c in d.get("close") or [] if c is not None]
         ts = d.get("timestamp") or [now]
-        # "open" = last print is recent and the session hasn't ended
-        state = "open" if _us_market_open(now) else "closed"
-        if sym.endswith("-USD"):
-            state = "open"
+        state = "open" if market_open(sym, now) else "closed"
         out[sym] = Quote(symbol=sym, name=TICKER_NAMES.get(sym, sym), price=d["fulldayPrice"],
                          prev=d.get("previousClose") or d.get("chartPreviousClose") or 0,
                          spark=closes, state=state, at=ts[-1])
@@ -529,12 +572,7 @@ def _fetch_quotes(syms):
 
 
 def _us_market_open(now):
-    try:      # NYSE hours, whatever the server's own TZ is
-        from datetime import datetime
-        from zoneinfo import ZoneInfo
-        t = datetime.fromtimestamp(now, ZoneInfo("America/New_York")).timetuple()
-    except Exception:
-        t = time.localtime(now)
+    t = _local(now, "America/New_York")     # NYSE hours, whatever the server's own TZ is
     mins = t.tm_hour * 60 + t.tm_min
     return t.tm_wday < 5 and 570 <= mins < 960
 
