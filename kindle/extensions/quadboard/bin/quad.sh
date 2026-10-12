@@ -9,6 +9,7 @@
 #   quad.sh start       stop the Kindle UI and run the board (from KUAL)
 #   quad.sh stop        back to the Kindle UI
 #   quad.sh touchtest   for 30 s, log taps and show where the server maps them
+#   quad.sh diag        log tools, input devices and raw touch events, to debug a new Kindle
 #   quad.sh status
 #
 # Only busybox tools: wget, hexdump/od, awk, dd, lipc-*.
@@ -159,6 +160,7 @@ touch_loop() {
                 log "long press: quitting"
                 kill -TERM "$(cat "$PIDF")" 2>/dev/null
             else
+                log "tap $x,$y"
                 date +%s > "$RUN/lasttap"
                 fetch "$SERVER/api/kindle/tap?k=$TOKEN&x=$x&y=$y" /dev/null 20 &
             fi
@@ -259,11 +261,17 @@ case "$1" in
             log "can't copy the script to $RUN"
             exit 1
         fi
-        # a session of its own, so KUAL closing its menu can't take us down with it
+        # a session of its own if we can, so KUAL closing its menu can't take us
+        # down with it. The PW1's busybox has neither setsid nor nohup; a plain
+        # background job is fine there, since run() ignores TERM/HUP from its
+        # first line. (Ignoring them here instead would stick: a shell can't
+        # re-trap signals that were ignored when it started, and Stop needs TERM.)
         if command -v setsid >/dev/null 2>&1; then
             setsid sh "$RUN/quad.sh" run >> "$LOG" 2>&1 < /dev/null &
-        else
+        elif command -v nohup >/dev/null 2>&1; then
             nohup sh "$RUN/quad.sh" run >> "$LOG" 2>&1 < /dev/null &
+        else
+            sh "$RUN/quad.sh" run >> "$LOG" 2>&1 < /dev/null &
         fi
         sleep 2
         running || log "the board process exited right away; see the lines above"
@@ -285,12 +293,37 @@ case "$1" in
         kill $tp 2>/dev/null
         log "touchtest done"
         ;;
+    diag)
+        # everything needed to debug a new Kindle, appended to quad.log
+        mkdir -p "$RUN"
+        log "=== diag: PATH=$PATH"
+        for t in sh busybox wget hexdump od awk dd sed tr setsid nohup start-stop-daemon usleep eips fbink \
+                 lipc-get-prop lipc-set-prop stop start initctl; do
+            log "  $t: $(command -v "$t" || echo MISSING)"
+        done
+        log "  fbink in use: ${FBINK:-none}"
+        log "  kindle UI jobs: $(initctl list 2>/dev/null | grep -iE 'lab126_gui|framework' | tr '\n' ';')"
+        log "  battery $(battery)%, charging=$(lipc-get-prop com.lab126.powerd isCharging 2>/dev/null), wifi=$(lipc-get-prop com.lab126.wifid cmState 2>/dev/null)"
+        log "  server: $(wget -q -O - "$SERVER/healthz" 2>&1 | head -c 80)"
+        log "  rtc: $(echo /sys/class/rtc/rtc*)"
+        log "  input devices:"
+        grep -E '^(N|H):' /proc/bus/input/devices 2>/dev/null | while read -r ln; do log "    $ln"; done
+        dev=$(find_touch)
+        log "  touch device picked: $dev; raw events for 10 s, tap the screen a few times:"
+        dd if="$dev" of="$RUN/raw.bin" bs=16 count=200 2>/dev/null &
+        dp=$!
+        sleep 10
+        kill $dp 2>/dev/null
+        log "  $(wc -c < "$RUN/raw.bin" 2>/dev/null || echo 0) bytes; first events (sec usec type code value as 8 words):"
+        words < "$RUN/raw.bin" 2>/dev/null | head -n 40 | while read -r ln; do log "    $ln"; done
+        log "=== diag done"
+        ;;
     status)
         running && echo "running (pid $(cat "$PIDF"))" || echo "stopped"
         tail -n 15 "$LOG" 2>/dev/null
         ;;
     *)
-        echo "usage: $0 start|stop|touchtest|status"
+        echo "usage: $0 start|stop|touchtest|diag|status"
         exit 1
         ;;
 esac
