@@ -15,6 +15,8 @@ services:
       TZ: America/Sao_Paulo
       QUAD_TOKEN: ${QUAD_TOKEN:?set QUAD_TOKEN in .env}
       QUAD_ADMIN: ${QUAD_ADMIN:?set QUAD_ADMIN in .env}
+      # optional: Claude's one-line brief, on your Claude subscription (`claude setup-token`)
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
     volumes:
       # CasaOS keeps app data under /DATA/AppData/<app>
       - /DATA/AppData/quadboard/data:/data
