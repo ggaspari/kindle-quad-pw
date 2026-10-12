@@ -13,6 +13,7 @@ TOKEN=change-me            # the server's QUAD_TOKEN
 POWER=auto
 AWAKE_S=25                 # on battery: stay awake this long after a wake or a tap
 HOLD_S=3                   # hold a finger this long to quit back to the Kindle
+GIVEUP_S=60                # Start gives up and returns to the Kindle if the server never answers (0 = keep trying)
 
 # Leave blank unless the log says it picked the wrong one
 TOUCH_DEV=                 # e.g. /dev/input/event1

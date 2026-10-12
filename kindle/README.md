@@ -83,6 +83,7 @@ A interface do Kindle some e o painel aparece. Para sair, segure o dedo na tela 
 | `POWER` | `auto` | `auto` detecta USB pelo `isCharging` (ou bateria em 100%); `usb` / `battery` forçam |
 | `AWAKE_S` | `25` | na bateria, segundos acordado depois de acordar ou de um toque |
 | `HOLD_S` | `3` | segundos segurando para sair |
+| `GIVEUP_S` | `60` | se o servidor não responder nesse tempo depois do Start, o painel desiste e devolve a interface do Kindle (`0` = tenta para sempre) |
 | `TOUCH_DEV` | auto | por exemplo `/dev/input/event1`, se a detecção errar |
 | `RTC` | auto | `rtc1` se existir, senão `rtc0` |
 
