@@ -69,6 +69,8 @@ sudo adsb-config
 
 Abre um menu, no estilo do `omv-firstaid` do OpenMediaVault:
 
+![Menu principal do adsb-config](../docs/img/station/menu.png)
+
 | Opção | Faz |
 |---|---|
 | Estado da estação | rádio detectado, readsb, aviões com posição, mensagens/s, IPs, Wi-Fi e a URL para colar no dashboard do servidor |
@@ -77,6 +79,14 @@ Abre um menu, no estilo do `omv-firstaid` do OpenMediaVault:
 | Rádio | ganho (auto ou fixo), bias-tee e correção em ppm |
 | Nome na rede | muda o `<nome>.local` |
 | Senha, logs, reiniciar | trocar a senha do usuário, ver os logs do readsb e do primeiro boot, reiniciar o readsb ou a placa |
+
+| | |
+|---|---|
+| ![Estado da estação](../docs/img/station/status.png) | ![Localização da antena](../docs/img/station/location.png) |
+| ![Menu do Wi-Fi](../docs/img/station/wifi.png) | ![Redes encontradas](../docs/img/station/wifi-scan.png) |
+| ![Senha do Wi-Fi](../docs/img/station/wifi-password.png) | ![Ganho do rádio](../docs/img/station/radio.png) |
+
+As telas são geradas a partir do menu real, com dados de exemplo (`python3 station/screens/capture.py`, como root, com `whiptail`, `jq` e `pip install pyte`). O script não altera nada na máquina.
 
 As mesmas ações funcionam como comandos, o que serve para scripts:
 

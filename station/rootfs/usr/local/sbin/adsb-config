@@ -24,18 +24,6 @@ fi
 TITLE="Estação ADS-B"
 
 # ---------------------------------------------------------------- status
-sdr_present() {   # RTL2832U sticks: 0bda:2838 (RTL-SDR Blog V3/V4 and most) or 0bda:2832
-    local d
-    for d in /sys/bus/usb/devices/*; do
-        [[ -r $d/idVendor ]] || continue
-        if [[ $(cat "$d/idVendor") == 0bda && $(cat "$d/idProduct") =~ ^283[28]$ ]]; then
-            echo "$(cat "$d/manufacturer" 2>/dev/null) $(cat "$d/product" 2>/dev/null)" | xargs
-            return 0
-        fi
-    done
-    return 1
-}
-
 status() {
     local sdr ifc ip ac msgs
     echo "Estação:     $(hostname) ($(state_get LAT '?'), $(state_get LON '?'), $(state_get ALT_M '?') m)"
@@ -44,9 +32,9 @@ status() {
     if [[ -z $NO_SYSTEMD ]]; then
         echo "readsb:      $(systemctl is-active readsb 2>/dev/null || true)"
     fi
-    if [[ -r /run/readsb/aircraft.json ]] && command -v jq >/dev/null; then
-        ac=$(jq '[.aircraft[] | select(.seen_pos != null and .seen_pos < 60)] | length' /run/readsb/aircraft.json 2>/dev/null || echo "?")
-        msgs=$(jq '.last1min.messages // 0' /run/readsb/stats.json 2>/dev/null || echo 0)
+    if [[ -r $RUN/aircraft.json ]] && command -v jq >/dev/null; then
+        ac=$(jq '[.aircraft[] | select(.seen_pos != null and .seen_pos < 60)] | length' "$RUN/aircraft.json" 2>/dev/null || echo "?")
+        msgs=$(jq '.last1min.messages // 0' "$RUN/stats.json" 2>/dev/null || echo 0)
         echo "Aviões:      $ac com posição, $((msgs / 60)) mensagens/s"
     fi
     for ip in $(ip -4 -o addr show scope global 2>/dev/null | awk '{print $2 "=" $4}' || true); do
@@ -55,7 +43,8 @@ status() {
     if ifc=$(wifi_iface); then
         local link
         link=$(iw dev "$ifc" link 2>/dev/null | sed -n 's/^\tSSID: //p')
-        echo "Wi-Fi:       $ifc, ${link:+conectado a $link}${link:-desconectado} (salvo: $(state_get WIFI_SSID nenhum))"
+        if [[ -n $link ]]; then link="conectado a $link"; else link=desconectado; fi
+        echo "Wi-Fi:       $ifc, $link (salvo: $(state_get WIFI_SSID nenhum))"
     else
         echo "Wi-Fi:       nenhum adaptador (salvo: $(state_get WIFI_SSID nenhum))"
     fi
@@ -109,7 +98,7 @@ menu_wifi() {
             [[ -n ${ifc:-} ]] || return
             svc start iwd 2>/dev/null || true
             while IFS=$'\t' read -r sig name; do
-                items+=("$name" "${sig} dBm")
+                items+=("$name" "sinal ${sig%.*} dBm")      # not "-41 dBm": whiptail would take it for an option
             done < <(wifi_scan)
             [[ ${#items[@]} -gt 0 ]] || { say "Nenhuma rede encontrada."; return; }
             ssid=$(whiptail --title "$TITLE" --menu "Redes encontradas" 20 70 12 "${items[@]}" 3>&1 1>&2 2>&3) || return

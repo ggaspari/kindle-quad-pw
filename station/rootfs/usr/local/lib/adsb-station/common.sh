@@ -5,6 +5,8 @@
 STATE=${ADSB_STATE:-/etc/adsb-station.conf}
 NO_SYSTEMD=${ADSB_NO_SYSTEMD:-}       # set in container tests, which have no systemd
 IWD_DIR=${ADSB_IWD_DIR:-/var/lib/iwd}
+# shellcheck disable=SC2034  # used by adsb-config
+RUN=${ADSB_RUN:-/run/readsb}          # readsb's JSON
 
 # ---------------------------------------------------------------- state file
 state_get() {    # state_get KEY [default]
@@ -87,12 +89,26 @@ set_radio() {     # set_radio GAIN yes|no [PPM]
 set_hostname() {
     is_host "$1" || { echo "nome inválido: $1 (letras, números e hífen)"; return 2; }
     echo "$1" > /etc/hostname
-    hostname "$1" 2>/dev/null || true
+    # the live name too; not in tests, where it would rename the host running them
+    [[ -n $NO_SYSTEMD ]] || hostname "$1" 2>/dev/null || true
     touch /etc/hosts
     sed -i '/^127\.0\.1\.1[[:space:]]/d' /etc/hosts
     printf '127.0.1.1\t%s\n' "$1" >> /etc/hosts
     state_set HOSTNAME "$1"
     svc restart avahi-daemon 2>/dev/null || true
+}
+
+# ---------------------------------------------------------------- hardware
+sdr_present() {   # RTL2832U sticks: 0bda:2838 (RTL-SDR Blog V3/V4 and most) or 0bda:2832
+    local d
+    for d in /sys/bus/usb/devices/*; do
+        [[ -r $d/idVendor ]] || continue
+        if [[ $(cat "$d/idVendor") == 0bda && $(cat "$d/idProduct") =~ ^283[28]$ ]]; then
+            echo "$(cat "$d/manufacturer" 2>/dev/null) $(cat "$d/product" 2>/dev/null)" | xargs
+            return 0
+        fi
+    done
+    return 1
 }
 
 # ---------------------------------------------------------------- Wi-Fi (iwd + systemd-networkd)
