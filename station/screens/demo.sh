@@ -28,3 +28,5 @@ ip() {
     esac
 }
 iw() { printf 'Connected to 9c:53:22:aa:10:4e (on wlx00e04c81920a)\n\tSSID: Casa\n'; }
+# the tar1090 map: installed unless DEMO_MAP=no (the screen that offers to install it)
+map_installed() { [[ ${DEMO_MAP:-yes} == yes ]]; }

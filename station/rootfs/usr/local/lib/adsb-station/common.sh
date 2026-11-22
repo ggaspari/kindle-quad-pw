@@ -96,7 +96,34 @@ set_hostname() {
     printf '127.0.1.1\t%s\n' "$1" >> /etc/hosts
     state_set HOSTNAME "$1"
     svc restart avahi-daemon 2>/dev/null || true
+    refresh_webpage
+}
+
+refresh_webpage() {   # the home page shows the name, the IP and whether the map is there
     if [[ -z $NO_SYSTEMD && -x /usr/local/sbin/adsb-webpage ]]; then /usr/local/sbin/adsb-webpage || true; fi
+}
+
+# ---------------------------------------------------------------- the optional map (tar1090)
+# Not in the image: upstream's installer downloads it (and its aircraft
+# database), so it needs internet. It finds lighttpd and readsb's JSON in
+# /run/readsb and serves the map at /tar1090/, leaving / alone.
+TAR1090_DIR=${ADSB_TAR1090_DIR:-/usr/local/share/tar1090}
+TAR1090_INSTALLER=https://raw.githubusercontent.com/wiedehopf/tar1090/master/install.sh
+
+map_installed() { [[ -d $TAR1090_DIR/html ]]; }
+
+map_install() {       # install, or update: upstream uses the same script for both
+    local script
+    script=$(curl -fsSL -m 60 "$TAR1090_INSTALLER") \
+        || { echo "não deu para baixar o instalador do tar1090 do GitHub (a estação está sem internet?)"; return 1; }
+    bash -c "$script" || { echo "o instalador do tar1090 falhou (veja as mensagens acima)"; return 1; }
+    refresh_webpage
+}
+
+map_remove() {
+    map_installed || { echo "o mapa não está instalado"; return 0; }
+    bash "$TAR1090_DIR/uninstall.sh"          # also restarts lighttpd
+    refresh_webpage
 }
 
 # ---------------------------------------------------------------- the URL for the Quad Board server

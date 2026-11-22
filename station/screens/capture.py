@@ -28,7 +28,7 @@ FONT_REG = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
 COLS, ROWS = 80, 24
 
 DOWN, ENTER, TAB = b"\x1b[B", b"\r", b"\t"
-SCREENS = [  # name, keys from the main menu
+SCREENS = [  # name, keys from the main menu[, extra environment]
     ("menu", []),
     ("status", [ENTER]),
     ("location", [DOWN, ENTER]),
@@ -36,6 +36,8 @@ SCREENS = [  # name, keys from the main menu
     ("wifi-scan", [DOWN, DOWN, ENTER, ENTER]),
     ("wifi-password", [DOWN, DOWN, ENTER, ENTER, ENTER, b"minhasenha"]),
     ("radio", [DOWN, DOWN, DOWN, ENTER]),
+    ("map", [DOWN] * 5 + [ENTER], {"DEMO_MAP": "no"}),   # offers to install it
+    ("map-installed", [DOWN] * 5 + [ENTER]),             # update / remove
     ("qr", [ENTER, TAB, ENTER]),          # Estado > "QR / copiar URL"
 ]
 
@@ -58,11 +60,11 @@ def color(name, bold, default):
     return (BRIGHT if bold else PALETTE).get(name, default)
 
 
-def grab(keys, state, run):
+def grab(keys, state, run, extra=None):
     # NEWT_COLORS: Debian's blue background (Ubuntu repaints whiptail purple)
     env = dict(os.environ, TERM="xterm", LANG="C.UTF-8", LC_ALL="C.UTF-8", NEWT_COLORS="root=white,blue",
                ADSB_LIB=os.path.join(HERE, "demo.sh"), ADSB_STATE=state, ADSB_RUN=run,
-               ADSB_NO_SYSTEMD="1", ADSB_IWD_DIR=os.path.join(run, "iwd"))
+               ADSB_NO_SYSTEMD="1", ADSB_IWD_DIR=os.path.join(run, "iwd"), **(extra or {}))
     pid, fd = pty.fork()
     if pid == 0:
         os.execve("/bin/bash", ["bash", CONFIG], env)
@@ -150,13 +152,13 @@ def main():
                     os.path.join(run, "aircraft.json"))
         with open(os.path.join(run, "stats.json"), "w") as f:
             f.write('{"last1min": {"messages": 31200}}')
-        for name, keys in SCREENS:
+        for name, keys, *extra in SCREENS:
             state = os.path.join(tmp, f"{name}.conf")
             with open(state, "w") as f:
                 f.write("HOSTNAME=adsb-station\nUSERNAME=adsb\nLAT=-12.9711\nLON=-38.5108\nALT_M=10\n"
                         "GAIN=auto\nBIAS_TEE=no\nWIFI_COUNTRY=BR\nWIFI_SSID=Casa\n")
             path = os.path.join(OUT, f"{name}.png")
-            screen, raw = grab(keys, state, run)
+            screen, raw = grab(keys, state, run, *extra)
             draw(screen, path)
             if name == "qr":
                 import base64
