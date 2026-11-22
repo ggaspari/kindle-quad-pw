@@ -35,8 +35,9 @@ Variável opcional: `ROOT_MB` define o tamanho da partição na imagem (padrão:
    - `PASSWORD` e/ou `SSH_PUBKEY`: sem pelo menos um dos dois, a estação se recusa a configurar;
    - `LAT`, `LON` e `ALT_M` da antena;
    - `HOSTNAME`, se quiser outro nome além de `adsb-station`;
-   - `WIFI_SSID` e `WIFI_PSK`, se a estação for usar um adaptador Wi-Fi USB em vez do cabo.
-3. Ligue o cabo de rede (ou o adaptador Wi-Fi), o RTL-SDR e a fonte (5 V, 2 A ou mais).
+   - `WIFI_SSID` e `WIFI_PSK`, se a estação for usar um adaptador Wi-Fi USB em vez do cabo;
+   - `TAR1090=no`, se não quiser o [mapa](#mapa-tar1090) (o padrão é `yes`).
+3. Ligue o cabo de rede (ou o adaptador Wi-Fi), o RTL-SDR e a fonte (5 V, 2 A ou mais). Para o mapa vir junto, a estação precisa de internet no primeiro boot.
 
 ## 3. Primeiro boot
 
@@ -57,7 +58,37 @@ viewadsb                                   # tabela ao vivo no terminal (Ctrl+C 
 curl -s localhost/data/aircraft.json | jq '.aircraft | length'
 ```
 
-No navegador: `http://adsb-station.local/` tem os links, e `http://adsb-station.local/tar1090/` mostra o mapa, se houve internet no primeiro boot.
+No navegador, `http://adsb-station.local/` abre a página da estação (veja [Ligar no servidor](#4-ligar-no-servidor)).
+
+### Mapa (tar1090)
+
+A estação tem um servidor web (lighttpd), que serve três coisas:
+
+| Endereço | O que é | Quando existe |
+|---|---|---|
+| `/` | página da estação: aviões vistos agora, a URL para o Quad Board, botão Copiar e QR Code | sempre |
+| `/data/aircraft.json`, `/data/stats.json` | os dados do readsb, que o servidor do Quad Board lê | sempre |
+| `/tar1090/` | o mapa ao vivo dos aviões, com rastros, tabela e detalhes de cada voo | se o tar1090 foi instalado |
+
+O resto vem dentro da imagem e funciona sem internet. O [tar1090](https://github.com/wiedehopf/tar1090) não vem: o primeiro boot roda o instalador oficial, que o baixa do GitHub com o banco de aeronaves. Por isso o mapa é opcional. Ele só é instalado com `TAR1090=yes` (o padrão) e internet no primeiro boot. O Quad Board não usa o mapa, então a estação funciona igual sem ele.
+
+**Ele foi instalado?** A página `http://adsb-station.local/` mostra o link **mapa (tar1090)** quando o mapa existe. No log do primeiro boot, procure a linha `--- tar1090 map`: em seguida vem `no internet: tar1090 skipped` ou `tar1090 install failed`, se não deu certo.
+
+**Instalar depois** (ou atualizar, que usa o mesmo comando), por SSH, com a estação na internet:
+
+```sh
+sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/wiedehopf/tar1090/master/install.sh)"
+sudo systemctl start adsb-webpage     # a página da estação passa a mostrar o link do mapa
+```
+
+O instalador acha o lighttpd e os dados do readsb (`/run/readsb`) e publica o mapa só em `/tar1090/`, sem mexer na página da estação. Leva poucos minutos.
+
+**Remover:**
+
+```sh
+sudo bash /usr/local/share/tar1090/uninstall.sh   # também reinicia o lighttpd
+sudo systemctl start adsb-webpage                 # tira o link da página
+```
 
 ## `adsb-config`: configurar depois
 
