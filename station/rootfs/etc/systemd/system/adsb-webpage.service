@@ -1,0 +1,8 @@
+[Unit]
+Description=ADS-B station home page (URL and QR code for the Quad Board server)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/adsb-webpage

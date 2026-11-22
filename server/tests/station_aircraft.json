@@ -1,0 +1,16 @@
+{ "now": 1763820000.0, "messages": 184211,
+  "aircraft": [
+    {"hex": "e48a3c", "type": "adsb_icao", "flight": "GLO1690 ", "r": "PR-GUM", "t": "B38M",
+     "alt_baro": 9800, "gs": 287.4, "track": 23.1, "baro_rate": -1344,
+     "lat": -12.9010, "lon": -38.4551, "seen_pos": 0.4, "seen": 0.1, "rssi": -18.2},
+    {"hex": "e4904b", "type": "adsb_icao", "flight": "AZU4512 ", "alt_baro": 35000, "gs": 455.0,
+     "track": 201.7, "lat": -13.4100, "lon": -38.9020, "seen_pos": 1.2, "seen": 0.8, "rssi": -27.5},
+    {"hex": "e47f10", "type": "adsb_icao", "flight": "TAM3320 ", "alt_baro": "ground",
+     "lat": -12.9103, "lon": -38.3311, "seen_pos": 2.0, "seen": 1.0, "rssi": -9.1},
+    {"hex": "e40001", "type": "adsb_icao", "flight": "PTXYZ   ", "alt_baro": 4500,
+     "lat": -12.95, "lon": -38.49, "seen_pos": 140.0, "seen": 3.0},
+    {"hex": "e40002", "type": "mode_s", "alt_baro": 12000, "seen": 0.5},
+    {"hex": "e40003", "type": "adsb_icao", "flight": "ONI5810 ", "alt_baro": 31000,
+     "lat": -10.30, "lon": -37.10, "seen_pos": 0.9, "seen": 0.4}
+  ]
+}

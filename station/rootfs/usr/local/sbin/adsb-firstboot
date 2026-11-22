@@ -1,0 +1,164 @@
+#!/bin/bash
+# ADS-B station first boot: turns the Libre Computer Debian 12 image into a
+# readsb receiver for an RTL-SDR (Blog V4 included). Everything it needs is
+# already in the image (build-image.sh put it there), so it runs without
+# internet; only the optional tar1090 map is downloaded.
+#
+# Reads /boot/efi/adsb-station.conf (the FAT partition you can edit on any PC)
+# and leaves its log next to it. Runs once: adsb-firstboot.done marks it done.
+set -euo pipefail
+
+BOOT=${ADSB_BOOT:-/boot/efi}
+CONF=$BOOT/adsb-station.conf
+LOG=/var/log/adsb-firstboot.log
+PAYLOAD=${ADSB_PAYLOAD:-/opt/adsb-station}
+NO_REBOOT=${ADSB_NO_REBOOT:-}
+# shellcheck source=station/rootfs/usr/local/lib/adsb-station/common.sh
+. "${ADSB_LIB:-/usr/local/lib/adsb-station/common.sh}"     # state file, readsb, Wi-Fi
+
+exec > >(tee -a "$LOG") 2>&1
+echo "=== adsb-firstboot $(date -Is)"
+
+finish() {
+    local rc=$?
+    cp -f "$LOG" "$BOOT/adsb-firstboot.log" 2>/dev/null || true
+    if [[ $rc -ne 0 ]]; then
+        echo "!!! first boot setup FAILED (exit $rc). Fix adsb-station.conf or see adsb-firstboot.log, then reboot to retry."
+    fi
+}
+trap finish EXIT
+
+# ---------------------------------------------------------------- config
+# KEY=VALUE lines only; never sourced, so a typo cannot run anything.
+declare -A C=(
+    [HOSTNAME]=adsb-station [TIMEZONE]=America/Bahia [USERNAME]=adsb [PASSWORD]=""
+    [SSH_PUBKEY]="" [LAT]="" [LON]="" [ALT_M]="" [GAIN]=auto [BIAS_TEE]=no [TAR1090]=yes
+    [WIFI_SSID]="" [WIFI_PSK]="" [WIFI_HIDDEN]=no [WIFI_COUNTRY]=BR
+)
+if [[ -f $CONF ]]; then
+    while IFS= read -r line || [[ -n $line ]]; do
+        line=${line%$'\r'}                              # edited on Windows
+        [[ $line =~ ^[[:space:]]*([A-Z_0-9]+)=(.*)$ ]] || continue
+        key=${BASH_REMATCH[1]} val=${BASH_REMATCH[2]}
+        val=${val#\"}; val=${val%\"}
+        [[ -v C[$key] ]] && C[$key]=$val
+    done < "$CONF"
+else
+    echo "no $CONF; using defaults"
+fi
+
+die() { echo "config error: $*"; exit 2; }
+is_host "${C[HOSTNAME]}" || die "HOSTNAME '${C[HOSTNAME]}'"
+[[ ${C[USERNAME]} =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || die "USERNAME '${C[USERNAME]}'"
+[[ -e /usr/share/zoneinfo/${C[TIMEZONE]} ]] || die "TIMEZONE '${C[TIMEZONE]}'"
+[[ -z ${C[LAT]} ]] || is_lat "${C[LAT]}" || die "LAT '${C[LAT]}' (decimal degrees, -90 to 90)"
+[[ -z ${C[LON]} ]] || is_lon "${C[LON]}" || die "LON '${C[LON]}' (decimal degrees, -180 to 180)"
+[[ -z ${C[ALT_M]} ]] || is_alt "${C[ALT_M]}" || die "ALT_M '${C[ALT_M]}' (metres)"
+is_gain "${C[GAIN]}" || die "GAIN '${C[GAIN]}'"
+[[ ${C[BIAS_TEE]} == yes || ${C[BIAS_TEE]} == no ]] || die "BIAS_TEE '${C[BIAS_TEE]}' (yes or no)"
+is_country "${C[WIFI_COUNTRY]}" || die "WIFI_COUNTRY '${C[WIFI_COUNTRY]}' (two letters, e.g. BR)"
+if [[ -z ${C[PASSWORD]} && -z ${C[SSH_PUBKEY]} ]]; then
+    die "set PASSWORD or SSH_PUBKEY, or there is no way to log in"
+fi
+
+# ---------------------------------------------------------------- system
+echo "--- host ${C[HOSTNAME]}, timezone ${C[TIMEZONE]}"
+set_hostname "${C[HOSTNAME]}"
+ln -sf "/usr/share/zoneinfo/${C[TIMEZONE]}" /etc/localtime
+echo "${C[TIMEZONE]}" > /etc/timezone
+for k in USERNAME LAT LON ALT_M GAIN BIAS_TEE; do state_set "$k" "${C[$k]}"; done
+chmod 644 "$STATE"
+
+set_country "${C[WIFI_COUNTRY]}"
+if [[ -n ${C[WIFI_SSID]} ]]; then
+    echo "--- Wi-Fi \"${C[WIFI_SSID]}\" (USB adapter)"
+    hidden=""
+    [[ ${C[WIFI_HIDDEN]} == yes ]] && hidden=hidden
+    set_wifi "${C[WIFI_SSID]}" "${C[WIFI_PSK]}" "$hidden"
+fi
+
+echo "--- packages"
+export DEBIAN_FRONTEND=noninteractive
+debs=("$PAYLOAD"/debs/*.deb)
+if [[ -e ${debs[0]} ]]; then
+    dpkg -i "${debs[@]}"                 # the closure build-image.sh resolved against this image
+else
+    apt-get update
+    xargs -a <(grep -v '^#' "$PAYLOAD/packages.txt") apt-get install -y --no-install-recommends
+fi
+
+echo "--- user ${C[USERNAME]}"
+if ! id "${C[USERNAME]}" &>/dev/null; then
+    useradd -m -s /bin/bash -G sudo,plugdev "${C[USERNAME]}"
+fi
+if [[ -n ${C[PASSWORD]} ]]; then
+    echo "${C[USERNAME]}:${C[PASSWORD]}" | chpasswd
+fi
+if [[ -n ${C[SSH_PUBKEY]} ]]; then
+    home=$(getent passwd "${C[USERNAME]}" | cut -d: -f6)
+    install -d -m 700 -o "${C[USERNAME]}" -g "${C[USERNAME]}" "$home/.ssh"
+    grep -qxF "${C[SSH_PUBKEY]}" "$home/.ssh/authorized_keys" 2>/dev/null \
+        || echo "${C[SSH_PUBKEY]}" >> "$home/.ssh/authorized_keys"
+    chown "${C[USERNAME]}:${C[USERNAME]}" "$home/.ssh/authorized_keys"
+    chmod 600 "$home/.ssh/authorized_keys"
+fi
+passwd -l root >/dev/null                # the base image ships a root password
+
+# ---------------------------------------------------------------- build
+build=$(mktemp -d)
+echo "--- rtl-sdr-blog (RTL-SDR Blog V4 support)"
+tar xzf "$PAYLOAD/src/rtl-sdr-blog.tar.gz" -C "$build"
+cmake -S "$build/rtl-sdr-blog" -B "$build/rtl-sdr-blog/build" \
+    -DCMAKE_BUILD_TYPE=Release -DINSTALL_UDEV_RULES=ON -DDETACH_KERNEL_DRIVER=ON \
+    -DCMAKE_DISABLE_FIND_PACKAGE_Git=ON     # a tarball, not a checkout: skip git describe
+make -C "$build/rtl-sdr-blog/build" -j"$(nproc)"
+make -C "$build/rtl-sdr-blog/build" install
+ldconfig
+
+echo "--- readsb"
+tar xzf "$PAYLOAD/src/readsb.tar.gz" -C "$build"
+make -C "$build/readsb" -j"$(nproc)" RTLSDR=yes HAVE_BIASTEE=yes RTLSDR_PREFIX=/usr/local
+install -m 755 "$build/readsb/readsb" /usr/local/bin/readsb
+install -m 755 "$build/readsb/viewadsb" /usr/local/bin/viewadsb 2>/dev/null || true
+rm -rf "$build"
+
+echo "--- readsb service"
+getent passwd readsb >/dev/null || useradd --system --no-create-home --shell /usr/sbin/nologin -G plugdev readsb
+render_readsb
+
+echo "--- web"
+lighttpd-enable-mod adsb-station >/dev/null || true
+/usr/local/sbin/adsb-webpage          # URL, copy button and QR code; refreshed by adsb-webpage.timer
+
+if [[ -n $NO_SYSTEMD ]]; then
+    echo "--- no systemd here (test run): services not enabled"
+else
+    systemctl daemon-reload
+    systemctl enable readsb lighttpd avahi-daemon ssh adsb-webpage.timer
+    systemctl restart lighttpd || true
+    # give a Wi-Fi-only station a moment to get an address before going online
+    for _ in $(seq 30); do ip -4 route show default | grep -q . && break; sleep 2; done
+    /usr/local/sbin/adsb-webpage        # again, now with the address DHCP gave
+fi
+
+# ---------------------------------------------------------------- optional
+if [[ ${C[TAR1090]} == yes ]]; then
+    echo "--- tar1090 map (online)"
+    if curl -fsS -m 20 -o /dev/null https://raw.githubusercontent.com/wiedehopf/tar1090/master/version; then
+        # upstream's installer: it fetches tar1090 and its aircraft database
+        bash -c "$(curl -fsSL https://raw.githubusercontent.com/wiedehopf/tar1090/master/install.sh)" \
+            || echo "tar1090 install failed; the station works without it (rerun: see station/README.md)"
+    else
+        echo "no internet: tar1090 skipped (install it later, see station/README.md)"
+    fi
+fi
+
+# ---------------------------------------------------------------- done
+# don't leave secrets on the FAT partition (iwd keeps the Wi-Fi one, root-only)
+sed -i -e 's/^PASSWORD=.*/PASSWORD=/' -e 's/^WIFI_PSK=.*/WIFI_PSK=/' "$CONF" 2>/dev/null || true
+date -Is > "$BOOT/adsb-firstboot.done"
+echo "=== done. For the Quad Board server: $(station_url)  (page: http://${C[HOSTNAME]}.local/)"
+if [[ -z $NO_SYSTEMD && -z $NO_REBOOT ]]; then
+    echo "rebooting so the DVB driver blacklist takes effect"
+    systemctl --no-block reboot
+fi

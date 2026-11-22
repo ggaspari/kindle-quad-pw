@@ -1,0 +1,7 @@
+#!/bin/sh
+# Login banner: the station at a glance, and where its settings are.
+[ -x /usr/local/sbin/adsb-config ] || exit 0
+echo
+/usr/local/sbin/adsb-config status 2>/dev/null | sed 's/^/  /'
+echo
+echo "  Configurar (Wi-Fi, localização, rádio...):  sudo adsb-config"

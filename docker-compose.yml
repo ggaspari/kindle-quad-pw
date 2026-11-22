@@ -17,6 +17,8 @@ services:
       QUAD_ADMIN: ${QUAD_ADMIN:?set QUAD_ADMIN in .env}
       # optional: Claude's one-line brief, on your Claude subscription (`claude setup-token`)
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      # optional: your ADS-B station's aircraft.json (station/README.md)
+      QUAD_ADSB_LOCAL: ${QUAD_ADSB_LOCAL:-}
     volumes:
       # CasaOS keeps app data under /DATA/AppData/<app>
       - /DATA/AppData/quadboard/data:/data

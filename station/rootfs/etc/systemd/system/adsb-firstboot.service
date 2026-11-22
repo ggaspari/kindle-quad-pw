@@ -1,0 +1,16 @@
+[Unit]
+Description=ADS-B station first-boot setup (see /boot/efi/adsb-station.conf)
+After=local-fs.target network-online.target
+Wants=network-online.target
+ConditionPathExists=!/boot/efi/adsb-firstboot.done
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/adsb-firstboot
+StandardOutput=journal+console
+StandardError=journal+console
+TimeoutStartSec=infinity
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
