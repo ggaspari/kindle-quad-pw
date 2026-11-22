@@ -96,6 +96,21 @@ set_hostname() {
     printf '127.0.1.1\t%s\n' "$1" >> /etc/hosts
     state_set HOSTNAME "$1"
     svc restart avahi-daemon 2>/dev/null || true
+    if [[ -z $NO_SYSTEMD && -x /usr/local/sbin/adsb-webpage ]]; then /usr/local/sbin/adsb-webpage || true; fi
+}
+
+# ---------------------------------------------------------------- the URL for the Quad Board server
+station_ip() {    # the address other machines reach us on: the default route's, else the first one
+    local ip
+    ip=$(ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p' || true)
+    [[ -n $ip ]] || ip=$(ip -4 -o addr show scope global 2>/dev/null | awk '{sub(/\/.*/, "", $4); print $4; exit}' || true)
+    echo "$ip"
+}
+
+station_url() {   # by IP: the server's container usually cannot resolve .local names
+    local ip
+    ip=$(station_ip)
+    echo "http://${ip:-<IP>}/data/aircraft.json"
 }
 
 # ---------------------------------------------------------------- hardware

@@ -73,7 +73,7 @@ Abre um menu, no estilo do `omv-firstaid` do OpenMediaVault:
 
 | Opção | Faz |
 |---|---|
-| Estado da estação | rádio detectado, readsb, aviões com posição, mensagens/s, IPs, Wi-Fi e a URL para colar no dashboard do servidor |
+| Estado da estação | rádio detectado, readsb, aviões com posição, mensagens/s, IPs, Wi-Fi e a URL para colar no dashboard do servidor; o botão **QR / copiar URL** mostra um QR Code dessa URL e a copia para a área de transferência |
 | Localização da antena | latitude, longitude e altitude; reinicia o readsb |
 | Rede Wi-Fi | procura redes e conecta, aceita rede oculta digitando o nome, define o país dos canais, desliga |
 | Rádio | ganho (auto ou fixo), bias-tee e correção em ppm |
@@ -85,6 +85,7 @@ Abre um menu, no estilo do `omv-firstaid` do OpenMediaVault:
 | ![Estado da estação](../docs/img/station/status.png) | ![Localização da antena](../docs/img/station/location.png) |
 | ![Menu do Wi-Fi](../docs/img/station/wifi.png) | ![Redes encontradas](../docs/img/station/wifi-scan.png) |
 | ![Senha do Wi-Fi](../docs/img/station/wifi-password.png) | ![Ganho do rádio](../docs/img/station/radio.png) |
+| ![QR Code da URL no terminal](../docs/img/station/qr.png) | |
 
 As telas são geradas a partir do menu real, com dados de exemplo (`python3 station/screens/capture.py`, como root, com `whiptail`, `jq` e `pip install pyte`). O script não altera nada na máquina.
 
@@ -92,6 +93,7 @@ As mesmas ações funcionam como comandos, o que serve para scripts:
 
 ```sh
 adsb-config status                              # não precisa de sudo
+adsb-config url                                 # a URL para o servidor; --qr mostra o QR Code
 sudo adsb-config location -12.9711 -38.5108 10  # lat, lon, altitude (m)
 sudo adsb-config wifi "Minha Rede" "senha123"   # --hidden para rede oculta
 sudo adsb-config wifi-country BR
@@ -116,6 +118,16 @@ A Le Potato não tem Wi-Fi na placa. Funcionam os adaptadores USB com driver no 
 O Wi-Fi usa o **iwd**, e o endereço vem por DHCP pelo systemd-networkd, como no cabo. As redes salvas ficam em `/var/lib/iwd/`, legíveis só pelo root. Com cabo e Wi-Fi ao mesmo tempo, o cabo tem preferência. Adaptadores que precisam de driver fora do kernel (vários RTL8812AU/RTL8811CU antigos, por exemplo) não funcionam sem compilar esse driver à parte.
 
 ## 4. Ligar no servidor
+
+A URL que o servidor precisa aparece em três lugares, sempre com o **IP** da estação:
+
+- **Na página da estação:** `http://adsb-station.local/` mostra a URL, um botão **Copiar** e um QR Code, além de quantos aviões ela vê agora. A página se atualiza sozinha se o IP mudar.
+- **No terminal:** `sudo adsb-config`, em Estado, botão **QR / copiar URL**. Ele mostra o QR Code e copia a URL via OSC 52, que funciona por SSH no Windows Terminal, iTerm2, kitty e WezTerm (no PuTTY, não). `adsb-config url` só imprime a URL.
+- **No fim do log do primeiro boot.**
+
+Com o celular, aponte a câmera para o QR, toque e segure no link e escolha "copiar". Depois cole no dashboard do Quad Board.
+
+<img src="../docs/img/station/web.png" alt="Página da estação com a URL, o botão Copiar e o QR Code" width="360">
 
 No dashboard do Quad Board (`http://<servidor>:8740/?k=<QUAD_ADMIN>`), no card **Sky**:
 

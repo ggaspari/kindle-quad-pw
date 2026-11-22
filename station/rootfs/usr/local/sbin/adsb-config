@@ -4,6 +4,7 @@
 # the same actions also work as commands, for scripts:
 #
 #   adsb-config status
+#   adsb-config url [--qr]          (the aircraft.json URL for the Quad Board server)
 #   adsb-config location <lat> <lon> [alt_m]
 #   adsb-config wifi <ssid> [passphrase] [--hidden]
 #   adsb-config wifi-country <BR>
@@ -17,7 +18,7 @@ LIB=${ADSB_LIB:-/usr/local/lib/adsb-station/common.sh}
 # shellcheck source=station/rootfs/usr/local/lib/adsb-station/common.sh
 . "$LIB"
 
-if [[ $EUID -ne 0 && ! ${1:-} =~ ^(status|-h|--help|help)$ ]]; then
+if [[ $EUID -ne 0 && ! ${1:-} =~ ^(status|url|-h|--help|help)$ ]]; then
     exec sudo "$0" "$@"                    # changing settings needs root; looking does not
 fi
 
@@ -48,10 +49,47 @@ status() {
     else
         echo "Wi-Fi:       nenhum adaptador (salvo: $(state_get WIFI_SSID nenhum))"
     fi
-    ip=$(ip -4 -o addr show scope global 2>/dev/null | awk '{sub(/\/.*/, "", $4); print $4; exit}' || true)
     echo
     echo "No dashboard do Quad Board, em Sky > Your ADS-B station:"
-    echo "  http://${ip:-<IP>}/data/aircraft.json"
+    echo "  $(station_url)"
+}
+
+# ---------------------------------------------------------------- the URL, to a phone or the clipboard
+osc52() {         # put text on the clipboard of the terminal we are shown in (SSH included)
+    local b64
+    b64=$(printf %s "$1" | base64 | tr -d '\n')
+    if [[ -n ${TMUX:-} ]]; then
+        # shellcheck disable=SC1003  # a literal backslash ends the tmux passthrough
+        printf '\ePtmux;\e\e]52;c;%s\a\e\\' "$b64" > /dev/tty
+    else
+        printf '\e]52;c;%s\a' "$b64" > /dev/tty
+    fi
+}
+
+show_url() {      # QR code in the terminal, and the URL on the clipboard where the terminal allows it
+    local url
+    url=$(station_url)
+    clear
+    if [[ ${TERM:-} != linux ]]; then
+        osc52 "$url" 2>/dev/null || true      # the HDMI console has no clipboard
+    fi
+    # -m 2: the UTF-8 output prints margin/2 blank lines, so 1 would lose the top
+    # quiet zone; 33 modules = 17 lines, which with the text fits 80x24
+    if command -v qrencode >/dev/null; then
+        qrencode -t ANSIUTF8 -m 2 "$url" | sed 's/^/  /'
+    else
+        echo "  (qrencode não instalado)"
+    fi
+    echo
+    echo "  $url"
+    echo "  Aponte a câmera do celular. Se o seu terminal aceita OSC 52 (Windows Terminal,"
+    echo "  iTerm2, kitty, WezTerm; não o PuTTY), a URL também já está copiada."
+    read -rp "  Enter para voltar " _ < /dev/tty || true
+}
+
+status_screen() {
+    whiptail --title "$TITLE" --yes-button "Voltar" --no-button "QR / copiar URL" \
+        --yesno "$(status)" 20 76 || show_url
 }
 
 # ---------------------------------------------------------------- menu
@@ -170,7 +208,7 @@ menu() {
             9 "Reiniciar a estação" \
             3>&1 1>&2 2>&3) || exit 0
         case $c in
-            1) say "$(status)" || true ;;
+            1) status_screen || true ;;
             2) menu_location || true ;;
             3) menu_wifi || true ;;
             4) menu_radio || true ;;
@@ -184,11 +222,12 @@ menu() {
 }
 
 # ---------------------------------------------------------------- commands
-usage() { sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; }
 
 case ${1:-} in
     "")           command -v whiptail >/dev/null || { usage; exit 1; }; menu ;;
     status)       status ;;
+    url)          if [[ ${2:-} == --qr ]]; then show_url; else station_url; fi ;;
     location)     shift; [[ $# -ge 2 ]] || { usage; exit 2; }; set_location "$@" ;;
     wifi)         shift; [[ $# -ge 1 ]] || { usage; exit 2; }
                   h=""; args=()

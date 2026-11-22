@@ -1,0 +1,9 @@
+[Unit]
+Description=Keep the ADS-B station home page's address current
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,88 @@
+#!/bin/bash
+# Writes the station's home page (http://<station>/): the aircraft.json URL
+# for the Quad Board server, by IP, with a copy button and a QR code for a
+# phone. Run at boot and every few minutes (adsb-webpage.timer), so a new
+# DHCP address shows up; the file is only rewritten when it changes.
+set -euo pipefail
+# shellcheck source=station/rootfs/usr/local/lib/adsb-station/common.sh
+. "${ADSB_LIB:-/usr/local/lib/adsb-station/common.sh}"
+
+WWW=${ADSB_WWW:-/var/www/html}
+name=$(hostname)
+url=$(station_url)
+qr=""
+if command -v qrencode >/dev/null && [[ $url != *"<IP>"* ]]; then
+    qr=$(qrencode -t SVG --inline -m 1 -s 6 --foreground=111111 -o - "$url" 2>/dev/null || true)
+fi
+tar1090=""
+[[ -d /usr/local/share/tar1090/html ]] && tar1090='<a href="/tar1090/">mapa (tar1090)</a> · '
+
+page=$(cat <<HTML
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${name}: estação ADS-B</title>
+<style>
+:root { --bg: #f4f4f2; --card: #fff; --fg: #1d1d1b; --muted: #6b6b66; --accent: #0b5cad; --ok: #1e7a3c; }
+@media (prefers-color-scheme: dark) { :root { --bg: #161615; --card: #22221f; --fg: #ececea; --muted: #a2a29c; --accent: #6aa9ec; --ok: #5cc07f; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, sans-serif; }
+main { max-width: 560px; margin: 0 auto; padding: 24px 16px; }
+h1 { font-size: 1.4rem; margin: 0 0 4px; }
+p { margin: 0 0 12px; color: var(--muted); }
+.card { background: var(--card); border-radius: 12px; padding: 18px; margin: 16px 0; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.row { display: flex; gap: 8px; }
+input { flex: 1; min-width: 0; font: 15px ui-monospace, monospace; padding: 10px; border: 1px solid var(--muted); border-radius: 8px; background: var(--bg); color: var(--fg); }
+button { font: inherit; padding: 10px 16px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; cursor: pointer; }
+.qr { display: flex; justify-content: center; margin-top: 16px; }
+.qr svg { width: 220px; height: 220px; background: #fff; padding: 8px; border-radius: 8px; }
+#msg { min-height: 1.5em; margin-top: 8px; color: var(--ok); font-size: .9rem; }
+#live { font-variant-numeric: tabular-nums; }
+a { color: var(--accent); }
+</style></head>
+<body><main>
+<h1>${name}</h1>
+<p id="live">estação ADS-B</p>
+<div class="card">
+<p>No dashboard do Quad Board, em <b>Sky &gt; Your ADS-B station</b>, cole:</p>
+<div class="row"><input id="u" value="${url}" readonly onclick="this.select()"><button onclick="copy()">Copiar</button></div>
+<div id="msg"></div>
+<div class="qr">${qr}</div>
+</div>
+<p>${tar1090}<a href="/data/aircraft.json">aircraft.json</a> · <a href="/data/stats.json">stats.json</a></p>
+</main>
+<script>
+function done(ok) {
+  document.getElementById("msg").textContent = ok ? "Copiado." : "Selecionado: use Ctrl+C (ou toque e segure).";
+}
+function copy() {
+  const u = document.getElementById("u");
+  u.select(); u.setSelectionRange(0, u.value.length);
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch (e) {}   // works over plain http, where navigator.clipboard does not
+  if (!ok && navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(u.value).then(() => done(true), () => done(false));
+    return;
+  }
+  done(ok);
+}
+async function live() {
+  try {
+    const d = await (await fetch("/data/aircraft.json", {cache: "no-store"})).json();
+    const n = d.aircraft.filter(a => a.seen_pos !== undefined && a.seen_pos < 60).length;
+    document.getElementById("live").textContent = n + " aviões com posição agora";
+  } catch (e) {
+    document.getElementById("live").textContent = "readsb sem dados no momento";
+  }
+}
+live(); setInterval(live, 5000);
+</script>
+</body></html>
+HTML
+)
+
+mkdir -p "$WWW"
+if [[ ! -f $WWW/index.html ]] || [[ $(cat "$WWW/index.html") != "$page" ]]; then
+    printf '%s\n' "$page" > "$WWW/index.html.tmp"
+    mv "$WWW/index.html.tmp" "$WWW/index.html"
+fi

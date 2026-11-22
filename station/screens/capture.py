@@ -2,13 +2,18 @@
 
 Runs the real menu in an 80x24 pseudo-terminal with sample data
 (station/screens/demo.sh), reads the screen with pyte and draws it with
-Pillow into docs/img/station/. Needs: whiptail, jq, pyte, Pillow; run as root
-(adsb-config insists), it writes only to a temporary directory."""
+Pillow into docs/img/station/. Needs: whiptail, jq, qrencode, pyte, Pillow;
+run as root (adsb-config insists), it writes only to a temporary directory.
+The station's web page (web.png) also needs node with playwright."""
+import functools
+import http.server
 import os
 import pty
 import select
 import shutil
+import subprocess
 import tempfile
+import threading
 import time
 
 import pyte
@@ -31,6 +36,7 @@ SCREENS = [  # name, keys from the main menu
     ("wifi-scan", [DOWN, DOWN, ENTER, ENTER]),
     ("wifi-password", [DOWN, DOWN, ENTER, ENTER, ENTER, b"minhasenha"]),
     ("radio", [DOWN, DOWN, DOWN, ENTER]),
+    ("qr", [ENTER, TAB, ENTER]),          # Estado > "QR / copiar URL"
 ]
 
 # the Linux console palette whiptail (newt) is drawn with
@@ -64,6 +70,7 @@ def grab(keys, state, run):
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", ROWS, COLS, 0, 0))
     screen = pyte.Screen(COLS, ROWS)
     stream = pyte.ByteStream(screen)
+    raw = bytearray()      # what the terminal got, to check the OSC 52 copy
 
     def pump(t):
         end = time.time() + t
@@ -71,9 +78,11 @@ def grab(keys, state, run):
             r, _, _ = select.select([fd], [], [], 0.05)
             if r:
                 try:
-                    stream.feed(os.read(fd, 65536))
+                    chunk = os.read(fd, 65536)
                 except OSError:
                     return
+                raw.extend(chunk)
+                stream.feed(chunk)
     pump(1.5)
     for k in keys:
         os.write(fd, k)
@@ -81,7 +90,7 @@ def grab(keys, state, run):
     pump(0.5)
     os.kill(pid, 9)
     os.waitpid(pid, 0)
-    return screen
+    return screen, raw
 
 
 def draw(screen, path, size=18):
@@ -101,6 +110,12 @@ def draw(screen, path, size=18):
                 fg, bg = bg, fg
             x0, y0 = x * cw, y * ch
             d.rectangle([x0, y0, x0 + cw - 1, y0 + ch - 1], fill=bg)
+            if c.data in "▀▄█":                 # half blocks (the QR code): exact, no gaps between cells
+                top = (y0, y0 + ch // 2 - 1)
+                bottom = (y0 + ch // 2, y0 + ch - 1)
+                for (a, b), on in ((top, c.data in "▀█"), (bottom, c.data in "▄█")):
+                    d.rectangle([x0, a, x0 + cw - 1, b], fill=fg if on else bg)
+                continue
             if c.data.strip():
                 box = c.data in "─│┌┐└┘├┤┬┴┼▒░▓█↑↓"
                 if c.data in "─┌┐└┘├┤┬┴┼":      # lines meet the cell edges, whatever the font
@@ -123,7 +138,7 @@ def draw(screen, path, size=18):
 
 
 def main():
-    for tool in ("whiptail", "jq"):
+    for tool in ("whiptail", "jq", "qrencode"):
         if not shutil.which(tool):
             raise SystemExit(f"needs {tool}")
     os.makedirs(OUT, exist_ok=True)
@@ -141,10 +156,42 @@ def main():
                 f.write("HOSTNAME=adsb-station\nUSERNAME=adsb\nLAT=-12.9711\nLON=-38.5108\nALT_M=10\n"
                         "GAIN=auto\nBIAS_TEE=no\nWIFI_COUNTRY=BR\nWIFI_SSID=Casa\n")
             path = os.path.join(OUT, f"{name}.png")
-            draw(grab(keys, state, run), path)
+            screen, raw = grab(keys, state, run)
+            draw(screen, path)
+            if name == "qr":
+                import base64
+                url = b"http://192.168.1.60/data/aircraft.json"
+                assert b"\x1b]52;c;" + base64.b64encode(url) in raw, "no OSC 52 copy of the URL"
             print(path)
+        web_page(tmp, run)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def web_page(tmp, run):
+    """The station's home page, as adsb-webpage writes it, served with /data/."""
+    if not shutil.which("node"):
+        print("web.png skipped: no node")
+        return
+    www = os.path.join(tmp, "www")
+    env = dict(os.environ, ADSB_LIB=os.path.join(HERE, "demo.sh"), ADSB_WWW=www, ADSB_NO_SYSTEMD="1")
+    subprocess.run(["bash", os.path.join(os.path.dirname(CONFIG), "adsb-webpage")], env=env, check=True)
+    shutil.copytree(run, os.path.join(www, "data"))
+    class Quiet(http.server.SimpleHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+    handler = functools.partial(Quiet, directory=www)
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    path = os.path.join(OUT, "web.png")
+    try:
+        subprocess.run(["node", os.path.join(HERE, "web.js"), f"http://127.0.0.1:{srv.server_port}/", path],
+                       check=True)
+        print(path)
+    except subprocess.CalledProcessError:
+        print("web.png skipped: playwright failed")
+    finally:
+        srv.shutdown()
 
 
 if __name__ == "__main__":

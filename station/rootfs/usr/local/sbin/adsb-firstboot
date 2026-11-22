@@ -128,21 +128,17 @@ render_readsb
 
 echo "--- web"
 lighttpd-enable-mod adsb-station >/dev/null || true
-cat > /var/www/html/index.html <<EOF
-<!doctype html><meta charset="utf-8"><title>${C[HOSTNAME]}</title>
-<h1>${C[HOSTNAME]}</h1>
-<p><a href="/tar1090/">mapa (tar1090)</a> · <a href="/data/aircraft.json">aircraft.json</a>
- · <a href="/data/receiver.json">receiver.json</a> · <a href="/data/stats.json">stats.json</a></p>
-EOF
+/usr/local/sbin/adsb-webpage          # URL, copy button and QR code; refreshed by adsb-webpage.timer
 
 if [[ -n $NO_SYSTEMD ]]; then
     echo "--- no systemd here (test run): services not enabled"
 else
     systemctl daemon-reload
-    systemctl enable readsb lighttpd avahi-daemon ssh
+    systemctl enable readsb lighttpd avahi-daemon ssh adsb-webpage.timer
     systemctl restart lighttpd || true
     # give a Wi-Fi-only station a moment to get an address before going online
     for _ in $(seq 30); do ip -4 route show default | grep -q . && break; sleep 2; done
+    /usr/local/sbin/adsb-webpage        # again, now with the address DHCP gave
 fi
 
 # ---------------------------------------------------------------- optional
@@ -161,7 +157,7 @@ fi
 # don't leave secrets on the FAT partition (iwd keeps the Wi-Fi one, root-only)
 sed -i -e 's/^PASSWORD=.*/PASSWORD=/' -e 's/^WIFI_PSK=.*/WIFI_PSK=/' "$CONF" 2>/dev/null || true
 date -Is > "$BOOT/adsb-firstboot.done"
-echo "=== done. Data at http://${C[HOSTNAME]}.local/data/aircraft.json"
+echo "=== done. For the Quad Board server: $(station_url)  (page: http://${C[HOSTNAME]}.local/)"
 if [[ -z $NO_SYSTEMD && -z $NO_REBOOT ]]; then
     echo "rebooting so the DVB driver blacklist takes effect"
     systemctl --no-block reboot
