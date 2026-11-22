@@ -72,23 +72,17 @@ A estação tem um servidor web (lighttpd), que serve três coisas:
 
 O resto vem dentro da imagem e funciona sem internet. O [tar1090](https://github.com/wiedehopf/tar1090) não vem: o primeiro boot roda o instalador oficial, que o baixa do GitHub com o banco de aeronaves. Por isso o mapa é opcional. Ele só é instalado com `TAR1090=yes` (o padrão) e internet no primeiro boot. O Quad Board não usa o mapa, então a estação funciona igual sem ele.
 
-**Ele foi instalado?** A página `http://adsb-station.local/` mostra o link **mapa (tar1090)** quando o mapa existe. No log do primeiro boot, procure a linha `--- tar1090 map`: em seguida vem `no internet: tar1090 skipped` ou `tar1090 install failed`, se não deu certo.
+**Ele foi instalado?** A página `http://adsb-station.local/` mostra o link **mapa (tar1090)**, e o `adsb-config status` tem a linha `Mapa:` com o endereço, ou `não instalado`. No log do primeiro boot, a linha `--- tar1090 map` vem seguida do motivo, se não deu certo.
 
-**Instalar depois** (ou atualizar, que usa o mesmo comando), por SSH, com a estação na internet:
-
-```sh
-sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/wiedehopf/tar1090/master/install.sh)"
-sudo systemctl start adsb-webpage     # a página da estação passa a mostrar o link do mapa
-```
-
-O instalador acha o lighttpd e os dados do readsb (`/run/readsb`) e publica o mapa só em `/tar1090/`, sem mexer na página da estação. Leva poucos minutos.
-
-**Remover:**
+**Instalar depois, atualizar ou remover:** `sudo adsb-config`, opção **Mapa ao vivo (tar1090)**, com a estação na internet. Ou pelos comandos:
 
 ```sh
-sudo bash /usr/local/share/tar1090/uninstall.sh   # também reinicia o lighttpd
-sudo systemctl start adsb-webpage                 # tira o link da página
+sudo adsb-config map install     # instala; "update" faz o mesmo e baixa a versão nova
+sudo adsb-config map remove
+adsb-config map                  # o endereço do mapa, ou "não instalado"
 ```
+
+A instalação usa o instalador oficial do tar1090, mostra o andamento na tela e leva poucos minutos. O instalador acha o lighttpd e os dados do readsb (`/run/readsb`) e publica o mapa só em `/tar1090/`, sem mexer na página da estação. Ao terminar, a página da estação ganha (ou perde) o link do mapa.
 
 ## `adsb-config`: configurar depois
 
@@ -104,11 +98,12 @@ Abre um menu, no estilo do `omv-firstaid` do OpenMediaVault:
 
 | Opção | Faz |
 |---|---|
-| Estado da estação | rádio detectado, readsb, aviões com posição, mensagens/s, IPs, Wi-Fi e a URL para colar no dashboard do servidor; o botão **QR / copiar URL** mostra um QR Code dessa URL e a copia para a área de transferência |
+| Estado da estação | rádio detectado, readsb, aviões com posição, mensagens/s, IPs, Wi-Fi, o endereço do mapa e a URL para colar no dashboard do servidor; o botão **QR / copiar URL** mostra um QR Code dessa URL e a copia para a área de transferência |
 | Localização da antena | latitude, longitude e altitude; reinicia o readsb |
 | Rede Wi-Fi | procura redes e conecta, aceita rede oculta digitando o nome, define o país dos canais, desliga |
 | Rádio | ganho (auto ou fixo), bias-tee e correção em ppm |
 | Nome na rede | muda o `<nome>.local` |
+| Mapa ao vivo (tar1090) | instala o [mapa](#mapa-tar1090) da internet; depois de instalado, atualiza ou remove |
 | Senha, logs, reiniciar | trocar a senha do usuário, ver os logs do readsb e do primeiro boot, reiniciar o readsb ou a placa |
 
 | | |
@@ -116,6 +111,7 @@ Abre um menu, no estilo do `omv-firstaid` do OpenMediaVault:
 | ![Estado da estação](../docs/img/station/status.png) | ![Localização da antena](../docs/img/station/location.png) |
 | ![Menu do Wi-Fi](../docs/img/station/wifi.png) | ![Redes encontradas](../docs/img/station/wifi-scan.png) |
 | ![Senha do Wi-Fi](../docs/img/station/wifi-password.png) | ![Ganho do rádio](../docs/img/station/radio.png) |
+| ![Instalar o mapa](../docs/img/station/map.png) | ![Mapa instalado: atualizar ou remover](../docs/img/station/map-installed.png) |
 | ![QR Code da URL no terminal](../docs/img/station/qr.png) | |
 
 As telas são geradas a partir do menu real, com dados de exemplo (`python3 station/screens/capture.py`, como root, com `whiptail`, `jq` e `pip install pyte`). O script não altera nada na máquina.
@@ -132,6 +128,7 @@ sudo adsb-config wifi-scan
 sudo adsb-config wifi-off
 sudo adsb-config radio 49.6 no                  # ganho, bias-tee [ppm]
 sudo adsb-config hostname radar-casa
+sudo adsb-config map install                    # o mapa tar1090; também update, remove
 ```
 
 O `status` também aparece ao entrar por SSH.

@@ -144,13 +144,7 @@ fi
 # ---------------------------------------------------------------- optional
 if [[ ${C[TAR1090]} == yes ]]; then
     echo "--- tar1090 map (online)"
-    if curl -fsS -m 20 -o /dev/null https://raw.githubusercontent.com/wiedehopf/tar1090/master/version; then
-        # upstream's installer: it fetches tar1090 and its aircraft database
-        bash -c "$(curl -fsSL https://raw.githubusercontent.com/wiedehopf/tar1090/master/install.sh)" \
-            || echo "tar1090 install failed; the station works without it (to retry: station/README.md, 'Mapa (tar1090)')"
-    else
-        echo "no internet: tar1090 skipped (to install it later: station/README.md, 'Mapa (tar1090)')"
-    fi
+    map_install || echo "tar1090 skipped; the station works without it (later: sudo adsb-config map install)"
 fi
 
 # ---------------------------------------------------------------- done

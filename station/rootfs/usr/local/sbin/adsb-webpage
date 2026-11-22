@@ -15,7 +15,7 @@ if command -v qrencode >/dev/null && [[ $url != *"<IP>"* ]]; then
     qr=$(qrencode -t SVG --inline -m 1 -s 6 --foreground=111111 -o - "$url" 2>/dev/null || true)
 fi
 tar1090=""
-[[ -d /usr/local/share/tar1090/html ]] && tar1090='<a href="/tar1090/">mapa (tar1090)</a> · '
+map_installed && tar1090='<a href="/tar1090/">mapa (tar1090)</a> · '
 
 page=$(cat <<HTML
 <!doctype html>

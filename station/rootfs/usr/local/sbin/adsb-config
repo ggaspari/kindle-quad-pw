@@ -12,13 +12,14 @@
 #   adsb-config wifi-scan
 #   adsb-config radio <gain|auto> <yes|no bias-tee> [ppm]
 #   adsb-config hostname <name>
+#   adsb-config map [install|update|remove]   (the tar1090 map, from the internet)
 set -euo pipefail
 
 LIB=${ADSB_LIB:-/usr/local/lib/adsb-station/common.sh}
 # shellcheck source=station/rootfs/usr/local/lib/adsb-station/common.sh
 . "$LIB"
 
-if [[ $EUID -ne 0 && ! ${1:-} =~ ^(status|url|-h|--help|help)$ ]]; then
+if [[ $EUID -ne 0 && ! ${1:-} =~ ^(status|url|-h|--help|help)$ && ! ${1:-}${2:-} == map ]]; then
     exec sudo "$0" "$@"                    # changing settings needs root; looking does not
 fi
 
@@ -49,9 +50,20 @@ status() {
     else
         echo "Wi-Fi:       nenhum adaptador (salvo: $(state_get WIFI_SSID nenhum))"
     fi
+    echo "Mapa:        $(map_status)"
     echo
     echo "No dashboard do Quad Board, em Sky > Your ADS-B station:"
     echo "  $(station_url)"
+}
+
+map_status() {
+    local ip
+    if map_installed; then
+        ip=$(station_ip)
+        echo "http://${ip:-$(hostname).local}/tar1090/"
+    else
+        echo "não instalado (sudo adsb-config map install)"
+    fi
 }
 
 # ---------------------------------------------------------------- the URL, to a phone or the clipboard
@@ -182,6 +194,36 @@ menu_hostname() {
     [[ -n $n ]] && run set_hostname "$n" && say "Nome salvo: $n.local"
 }
 
+in_terminal() {   # long actions: their own output on screen, then back to the menu
+    clear
+    "$@" || true
+    echo
+    read -rp "Enter para voltar " _ < /dev/tty || true
+}
+
+menu_map() {
+    local c
+    if ! map_installed; then
+        whiptail --title "$TITLE" --yes-button "Instalar" --no-button "Voltar" --yesno \
+"O mapa ao vivo (tar1090) mostra os aviões que a estação vê, com rastros e detalhes de cada voo, em http://$(hostname).local/tar1090/.
+
+Ele não vem na imagem: a instalação baixa o tar1090 e o banco de aeronaves do GitHub. Precisa de internet e leva alguns minutos.
+
+O Quad Board não usa o mapa; a estação funciona igual sem ele." 16 76 || return 0
+        in_terminal map_install
+        return 0
+    fi
+    c=$(whiptail --title "$TITLE" --menu "Mapa ao vivo (tar1090): $(map_status)" 12 76 2 \
+        update "Atualizar (baixa a versão nova do GitHub)" \
+        remove "Remover o mapa" \
+        3>&1 1>&2 2>&3) || return 0
+    case $c in
+        update) in_terminal map_install ;;
+        remove) whiptail --title "$TITLE" --yesno "Remover o mapa? A estação e o Quad Board continuam funcionando." 8 70 --defaultno \
+                    && in_terminal map_remove ;;
+    esac
+}
+
 menu_logs() {
     local f
     f=$(mktemp)
@@ -202,10 +244,11 @@ menu() {
             3 "Rede Wi-Fi (adaptador USB)" \
             4 "Rádio: ganho, bias-tee, ppm" \
             5 "Nome na rede" \
-            6 "Trocar a senha de $(state_get USERNAME adsb)" \
-            7 "Ver logs" \
-            8 "Reiniciar o readsb" \
-            9 "Reiniciar a estação" \
+            6 "Mapa ao vivo (tar1090)" \
+            7 "Trocar a senha de $(state_get USERNAME adsb)" \
+            8 "Ver logs" \
+            9 "Reiniciar o readsb" \
+            10 "Reiniciar a estação" \
             3>&1 1>&2 2>&3) || exit 0
         case $c in
             1) status_screen || true ;;
@@ -213,16 +256,17 @@ menu() {
             3) menu_wifi || true ;;
             4) menu_radio || true ;;
             5) menu_hostname || true ;;
-            6) clear; passwd "$(state_get USERNAME adsb)" || true; read -rp "Enter para voltar" _ ;;
-            7) menu_logs || true ;;
-            8) { run restart_readsb && say "readsb reiniciado."; } || true ;;
-            9) if whiptail --title "$TITLE" --yesno "Reiniciar a estação agora?" 8 50; then svc reboot; fi ;;
+            6) menu_map || true ;;
+            7) clear; passwd "$(state_get USERNAME adsb)" || true; read -rp "Enter para voltar" _ ;;
+            8) menu_logs || true ;;
+            9) { run restart_readsb && say "readsb reiniciado."; } || true ;;
+            10) if whiptail --title "$TITLE" --yesno "Reiniciar a estação agora?" 8 50; then svc reboot; fi ;;
         esac
     done
 }
 
 # ---------------------------------------------------------------- commands
-usage() { sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; }
 
 case ${1:-} in
     "")           command -v whiptail >/dev/null || { usage; exit 1; }; menu ;;
@@ -240,6 +284,12 @@ case ${1:-} in
     wifi-scan)    wifi_scan || { echo "nenhum adaptador Wi-Fi"; exit 1; } ;;
     radio)        shift; [[ $# -ge 2 ]] || { usage; exit 2; }; set_radio "$@" ;;
     hostname)     set_hostname "${2:-}" ;;
+    map)          case ${2:-} in
+                      "")             map_status ;;
+                      install|update) map_install ;;
+                      remove)         map_remove ;;
+                      *)              usage; exit 2 ;;
+                  esac ;;
     -h|--help|help) usage ;;
     *)            usage; exit 2 ;;
 esac
