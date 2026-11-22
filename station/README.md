@@ -34,8 +34,9 @@ Variável opcional: `ROOT_MB` define o tamanho da partição na imagem (padrão:
 2. Tire e recoloque o cartão no computador. Na partição **boot** (FAT, abre no Windows), edite o `adsb-station.conf`:
    - `PASSWORD` e/ou `SSH_PUBKEY`: sem pelo menos um dos dois, a estação se recusa a configurar;
    - `LAT`, `LON` e `ALT_M` da antena;
-   - `HOSTNAME`, se quiser outro nome além de `adsb-station`.
-3. Ligue o cabo de rede, o RTL-SDR e a fonte (5 V, 2 A ou mais).
+   - `HOSTNAME`, se quiser outro nome além de `adsb-station`;
+   - `WIFI_SSID` e `WIFI_PSK`, se a estação for usar um adaptador Wi-Fi USB em vez do cabo.
+3. Ligue o cabo de rede (ou o adaptador Wi-Fi), o RTL-SDR e a fonte (5 V, 2 A ou mais).
 
 ## 3. Primeiro boot
 
@@ -43,7 +44,7 @@ A estação instala os pacotes, compila o driver e o readsb e reinicia. Leva uns
 
 O log fica em `/var/log/adsb-firstboot.log` e também no próprio cartão, na partição boot (`adsb-firstboot.log`). Se algo falhar, dá para ler o log no PC, corrigir o `.conf` e religar. Ao terminar, a estação:
 
-- apaga a senha do `adsb-station.conf`;
+- apaga as senhas (usuário e Wi-Fi) do `adsb-station.conf`;
 - cria o `adsb-firstboot.done`. Para refazer a configuração, apague esse arquivo e religue a placa;
 - bloqueia o login do root (use o seu usuário com `sudo`).
 
@@ -58,7 +59,51 @@ curl -s localhost/data/aircraft.json | jq '.aircraft | length'
 
 No navegador: `http://adsb-station.local/` tem os links, e `http://adsb-station.local/tar1090/` mostra o mapa, se houve internet no primeiro boot.
 
-Os ajustes do rádio (ganho, bias-tee, posição) ficam em `/etc/default/readsb`. Depois de editar, rode `sudo systemctl restart readsb`.
+## `adsb-config`: configurar depois
+
+Para mudar alguma coisa depois do primeiro boot, entre por SSH (ou use teclado e HDMI) e rode:
+
+```sh
+sudo adsb-config
+```
+
+Abre um menu, no estilo do `omv-firstaid` do OpenMediaVault:
+
+| Opção | Faz |
+|---|---|
+| Estado da estação | rádio detectado, readsb, aviões com posição, mensagens/s, IPs, Wi-Fi e a URL para colar no dashboard do servidor |
+| Localização da antena | latitude, longitude e altitude; reinicia o readsb |
+| Rede Wi-Fi | procura redes e conecta, aceita rede oculta digitando o nome, define o país dos canais, desliga |
+| Rádio | ganho (auto ou fixo), bias-tee e correção em ppm |
+| Nome na rede | muda o `<nome>.local` |
+| Senha, logs, reiniciar | trocar a senha do usuário, ver os logs do readsb e do primeiro boot, reiniciar o readsb ou a placa |
+
+As mesmas ações funcionam como comandos, o que serve para scripts:
+
+```sh
+adsb-config status                              # não precisa de sudo
+sudo adsb-config location -12.9711 -38.5108 10  # lat, lon, altitude (m)
+sudo adsb-config wifi "Minha Rede" "senha123"   # --hidden para rede oculta
+sudo adsb-config wifi-country BR
+sudo adsb-config wifi-scan
+sudo adsb-config wifi-off
+sudo adsb-config radio 49.6 no                  # ganho, bias-tee [ppm]
+sudo adsb-config hostname radar-casa
+```
+
+O `status` também aparece ao entrar por SSH.
+
+Tudo fica em `/etc/adsb-station.conf`, e o `/etc/default/readsb` é gerado a partir dele. Edite pelo `adsb-config`, e não à mão.
+
+### Wi-Fi por USB
+
+A Le Potato não tem Wi-Fi na placa. Funcionam os adaptadores USB com driver no kernel da imagem (6.1), com o firmware já incluído:
+
+- **Realtek:** `rtl8xxxu` (RTL8188CUS/EUS, RTL8192CU/EU), `r8188eu`, `rtw88` (RTL8821CU, RTL8822BU, RTL8723DU)
+- **MediaTek / Ralink:** `mt7601u`, `mt76x0u`, `mt76x2u`, `mt7921u`, `rt2800usb`
+- **Atheros:** `ath9k_htc` (AR9271), `carl9170`
+
+O Wi-Fi usa o **iwd**, e o endereço vem por DHCP pelo systemd-networkd, como no cabo. As redes salvas ficam em `/var/lib/iwd/`, legíveis só pelo root. Com cabo e Wi-Fi ao mesmo tempo, o cabo tem preferência. Adaptadores que precisam de driver fora do kernel (vários RTL8812AU/RTL8811CU antigos, por exemplo) não funcionam sem compilar esse driver à parte.
 
 ## 4. Ligar no servidor
 

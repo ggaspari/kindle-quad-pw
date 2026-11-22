@@ -16,7 +16,7 @@ set -euo pipefail
 
 BASE_URL="https://distro.libre.computer/ci/debian/12/debian-12-base-arm64%2Baml-s905x-cc.img.xz"
 BASE_SHA256="ffae0d7b42c02ed496f9ec6ad6f3b6eb74dbad1dc3849441f826203e8fa6e7c0"   # 2024-01-25 build
-ROOT_MB=${ROOT_MB:-3072}       # root partition in the image; growroot fills the SD card at first boot
+ROOT_MB=${ROOT_MB:-3072}       # starting size of the root filesystem (mkfs may need more); growroot fills the SD card at first boot
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 WORK=$(realpath -m "${1:-$HERE/work}")
@@ -55,9 +55,7 @@ log "p1 at sector $P1_START, p2 at sector $P2_START ($((P2_SIZE / 2048)) MB)"
 
 # ---------------------------------------------------------------- root tree
 ROOTFS=$WORK/rootfs
-if [[ -e $ROOTFS ]]; then
-    echo "$ROOTFS exists from an earlier run; remove it first"; exit 1
-fi
+rm -rf -- "${ROOTFS:?}"          # an earlier run's tree
 dd if="$WORK/base.img" of="$WORK/root-base.btrfs" bs=512 skip="$P2_START" count="$P2_SIZE" status=none
 FSID=$(btrfs inspect-internal dump-super "$WORK/root-base.btrfs" | awk '$1 == "fsid" {print $2}')
 LABEL=$(btrfs inspect-internal dump-super "$WORK/root-base.btrfs" | awk '$1 == "label" {print $2}')
@@ -122,22 +120,37 @@ done
 
 # ---------------------------------------------------------------- new root
 log "writing the root filesystem (mkfs.btrfs --rootdir, ${ROOT_MB} MB)"
+rm -f "$WORK/root.btrfs"
 truncate -s "${ROOT_MB}M" "$WORK/root.btrfs"
 mkfs.btrfs -q -f -L "$LABEL" -U "$FSID" --rootdir "$ROOTFS" "$WORK/root.btrfs"
 btrfs check --readonly "$WORK/root.btrfs" > "$WORK/check.log" 2>&1 \
     || { cat "$WORK/check.log"; echo "btrfs check failed"; exit 1; }
+# mkfs.btrfs --rootdir enlarges the file when it thinks the tree needs more
+# room, so the partition must take the filesystem's size, not ROOT_MB
+FS_BYTES=$(btrfs inspect-internal dump-super "$WORK/root.btrfs" | awk '$1 == "total_bytes" {print $2}')
+FILE_BYTES=$(stat -c %s "$WORK/root.btrfs")
+[[ $FS_BYTES -le $FILE_BYTES && $((FS_BYTES % 4096)) -eq 0 ]] \
+    || { echo "filesystem ($FS_BYTES) does not fit its file ($FILE_BYTES)"; exit 1; }
+truncate -s "$FS_BYTES" "$WORK/root.btrfs"
+log "root filesystem: $((FS_BYTES / 1048576)) MB"
 
 # ---------------------------------------------------------------- assemble
 log "assembling the image"
 IMG=$OUT/$NAME.img
 dd if="$WORK/base.img" of="$IMG" bs=512 count="$P2_START" status=none       # MBR, u-boot, FAT
 cat "$WORK/root.btrfs" >> "$IMG"
-sfdisk -q --no-reread --no-tell-kernel -N 2 "$IMG" <<< "$P2_START,$((ROOT_MB * 2048))"
+sfdisk -q --no-reread --no-tell-kernel -N 2 "$IMG" <<< "$P2_START,$((FS_BYTES / 512))"
+read -r _ P2_NEW < <(sfdisk -d "$IMG" | sed -n "s/^[^ ]*[^0-9]2 : start= *\([0-9]*\), size= *\([0-9]*\).*/\1 \2/p")
+[[ $((P2_NEW * 512)) -eq $FS_BYTES ]] || { echo "partition 2 is $P2_NEW sectors, filesystem $FS_BYTES bytes"; exit 1; }
 mcopy -o -i "$IMG@@$((P1_START * 512))" "$HERE/boot/adsb-station.conf" ::/adsb-station.conf
-rm -f "$WORK/base.img" "$WORK/root.btrfs"
+rm -f "$WORK/base.img" "$WORK/root.btrfs" "$OUT/$NAME.img.xz" "$OUT/$NAME.img.xz.sha256"
 
 log "compressing"
 xz -T0 -6 -f "$IMG"
 (cd "$OUT" && sha256sum "$NAME.img.xz" > "$NAME.img.xz.sha256")
 log "done: $IMG.xz ($(du -h "$IMG.xz" | cut -f1))"
-echo "rootfs tree kept in $ROOTFS for inspection; remove it before the next run"
+if [[ -n ${KEEP_ROOTFS:-} ]]; then
+    echo "rootfs tree kept in $ROOTFS for inspection"
+else
+    rm -rf -- "${ROOTFS:?}"
+fi

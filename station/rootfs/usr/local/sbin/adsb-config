@@ -1,0 +1,217 @@
+#!/bin/bash
+# adsb-config: settings and first aid for the ADS-B station, in the spirit of
+# omv-firstaid. With no arguments it opens a menu (SSH or the HDMI console);
+# the same actions also work as commands, for scripts:
+#
+#   adsb-config status
+#   adsb-config location <lat> <lon> [alt_m]
+#   adsb-config wifi <ssid> [passphrase] [--hidden]
+#   adsb-config wifi-country <BR>
+#   adsb-config wifi-off
+#   adsb-config wifi-scan
+#   adsb-config radio <gain|auto> <yes|no bias-tee> [ppm]
+#   adsb-config hostname <name>
+set -euo pipefail
+
+LIB=${ADSB_LIB:-/usr/local/lib/adsb-station/common.sh}
+# shellcheck source=station/rootfs/usr/local/lib/adsb-station/common.sh
+. "$LIB"
+
+if [[ $EUID -ne 0 && ! ${1:-} =~ ^(status|-h|--help|help)$ ]]; then
+    exec sudo "$0" "$@"                    # changing settings needs root; looking does not
+fi
+
+TITLE="Estação ADS-B"
+
+# ---------------------------------------------------------------- status
+sdr_present() {   # RTL2832U sticks: 0bda:2838 (RTL-SDR Blog V3/V4 and most) or 0bda:2832
+    local d
+    for d in /sys/bus/usb/devices/*; do
+        [[ -r $d/idVendor ]] || continue
+        if [[ $(cat "$d/idVendor") == 0bda && $(cat "$d/idProduct") =~ ^283[28]$ ]]; then
+            echo "$(cat "$d/manufacturer" 2>/dev/null) $(cat "$d/product" 2>/dev/null)" | xargs
+            return 0
+        fi
+    done
+    return 1
+}
+
+status() {
+    local sdr ifc ip ac msgs
+    echo "Estação:     $(hostname) ($(state_get LAT '?'), $(state_get LON '?'), $(state_get ALT_M '?') m)"
+    if sdr=$(sdr_present); then echo "Rádio:       ${sdr:-RTL-SDR} detectado"; else echo "Rádio:       NENHUM RTL-SDR no USB"; fi
+    echo "Ganho:       $(state_get GAIN auto), bias-tee $(state_get BIAS_TEE no)"
+    if [[ -z $NO_SYSTEMD ]]; then
+        echo "readsb:      $(systemctl is-active readsb 2>/dev/null || true)"
+    fi
+    if [[ -r /run/readsb/aircraft.json ]] && command -v jq >/dev/null; then
+        ac=$(jq '[.aircraft[] | select(.seen_pos != null and .seen_pos < 60)] | length' /run/readsb/aircraft.json 2>/dev/null || echo "?")
+        msgs=$(jq '.last1min.messages // 0' /run/readsb/stats.json 2>/dev/null || echo 0)
+        echo "Aviões:      $ac com posição, $((msgs / 60)) mensagens/s"
+    fi
+    for ip in $(ip -4 -o addr show scope global 2>/dev/null | awk '{print $2 "=" $4}' || true); do
+        echo "Rede:        ${ip%%=*} ${ip#*=}"
+    done
+    if ifc=$(wifi_iface); then
+        local link
+        link=$(iw dev "$ifc" link 2>/dev/null | sed -n 's/^\tSSID: //p')
+        echo "Wi-Fi:       $ifc, ${link:+conectado a $link}${link:-desconectado} (salvo: $(state_get WIFI_SSID nenhum))"
+    else
+        echo "Wi-Fi:       nenhum adaptador (salvo: $(state_get WIFI_SSID nenhum))"
+    fi
+    ip=$(ip -4 -o addr show scope global 2>/dev/null | awk '{sub(/\/.*/, "", $4); print $4; exit}' || true)
+    echo
+    echo "No dashboard do Quad Board, em Sky > Your ADS-B station:"
+    echo "  http://${ip:-<IP>}/data/aircraft.json"
+}
+
+# ---------------------------------------------------------------- menu
+ask() {           # ask "pergunta" "valor atual" -> echo answer (empty if cancelled)
+    local v
+    # a leading space keeps whiptail from reading "-12.97" as an option
+    v=$(whiptail --title "$TITLE" --inputbox "$1" 10 70 " $2" 3>&1 1>&2 2>&3) || return 0
+    v=${v#"${v%%[![:space:]]*}"}
+    echo "${v%"${v##*[![:space:]]}"}"
+}
+
+say() { whiptail --title "$TITLE" --msgbox "$1" 20 76; }
+
+run() {           # run an action and show its error, if any
+    local out
+    if out=$("$@" 2>&1); then return 0; fi
+    say "Não deu certo:\n\n$out"
+    return 1
+}
+
+menu_location() {
+    local lat lon alt
+    lat=$(ask "Latitude da antena (graus decimais, sul é negativo)" "$(state_get LAT)") || return
+    [[ -n $lat ]] || return
+    lon=$(ask "Longitude da antena (graus decimais, oeste é negativo)" "$(state_get LON)")
+    [[ -n $lon ]] || return
+    alt=$(ask "Altitude da antena em metros" "$(state_get ALT_M 0)")
+    run set_location "$lat" "$lon" "$alt" && say "Localização salva: $lat, $lon, ${alt:-?} m.\nO readsb foi reiniciado."
+}
+
+menu_wifi() {
+    local ifc choice ssid psk hidden="" items=() line
+    if ! ifc=$(wifi_iface); then
+        say "Nenhum adaptador Wi-Fi encontrado.\n\nLigue um adaptador USB suportado pelo kernel (Realtek rtl8xxxu/rtw88, MediaTek mt7601u/mt76, Ralink rt2800usb, Atheros ath9k_htc) e tente de novo.\n\nAinda dá para salvar a rede agora; ela conecta quando o adaptador aparecer."
+    fi
+    choice=$(whiptail --title "$TITLE" --menu "Wi-Fi${ifc:+ ($ifc)} - salvo: $(state_get WIFI_SSID nenhum)" 16 70 5 \
+        scan "Procurar redes" \
+        manual "Digitar o nome da rede (inclusive oculta)" \
+        country "País (canais permitidos): $(state_get WIFI_COUNTRY BR)" \
+        off "Desligar o Wi-Fi e esquecer a rede" \
+        3>&1 1>&2 2>&3) || return
+    case $choice in
+        scan)
+            [[ -n ${ifc:-} ]] || return
+            svc start iwd 2>/dev/null || true
+            while IFS=$'\t' read -r sig name; do
+                items+=("$name" "${sig} dBm")
+            done < <(wifi_scan)
+            [[ ${#items[@]} -gt 0 ]] || { say "Nenhuma rede encontrada."; return; }
+            ssid=$(whiptail --title "$TITLE" --menu "Redes encontradas" 20 70 12 "${items[@]}" 3>&1 1>&2 2>&3) || return
+            ;;
+        manual)
+            ssid=$(ask "Nome da rede (SSID)" "$(state_get WIFI_SSID)")
+            [[ -n $ssid ]] || return
+            whiptail --title "$TITLE" --yesno "A rede \"$ssid\" é oculta (não aparece na busca)?" 8 70 --defaultno && hidden=hidden
+            ;;
+        country)
+            line=$(ask "Código do país (2 letras)" "$(state_get WIFI_COUNTRY BR)")
+            [[ -n $line ]] && run set_country "${line^^}" && say "País salvo: ${line^^}."
+            return
+            ;;
+        off)
+            whiptail --title "$TITLE" --yesno "Desligar o Wi-Fi? Se a estação estiver só no Wi-Fi, a conexão SSH cai." 8 70 --defaultno || return
+            run wifi_off && say "Wi-Fi desligado."
+            return
+            ;;
+    esac
+    psk=$(whiptail --title "$TITLE" --passwordbox "Senha de \"$ssid\" (vazio para rede aberta)" 10 70 3>&1 1>&2 2>&3) || return
+    [[ -n $(state_get WIFI_COUNTRY) ]] || set_country BR
+    run set_wifi "$ssid" "$psk" "$hidden" || return
+    say "Rede \"$ssid\" salva. A estação conecta em alguns segundos.\n\nSe você está no SSH pelo cabo, confira com \"Estado\" o IP novo antes de tirar o cabo."
+}
+
+menu_radio() {
+    local gain bias ppm
+    gain=$(whiptail --title "$TITLE" --menu "Ganho do RTL-SDR (atual: $(state_get GAIN auto))\n\"auto\" ajusta sozinho; um valor fixo alto (43.9 a 49.6) costuma alcançar mais longe, mas satura perto de aeroportos." 22 76 10 \
+        auto "automático (recomendado)" 49.6 "" 48.0 "" 44.5 "" 43.9 "" 42.1 "" 40.2 "" 38.6 "" 36.4 "" 33.8 "" \
+        3>&1 1>&2 2>&3) || return
+    local dflt=()
+    [[ $(state_get BIAS_TEE no) == yes ]] || dflt=(--defaultno)
+    if whiptail --title "$TITLE" "${dflt[@]}" --yesno "Ligar o bias-tee (4,5 V pelo cabo, para LNA/filtro)?\nNão ligue com antena em curto DC." 9 70
+    then bias=yes; else bias=no; fi
+    ppm=$(ask "Correção de frequência (ppm; 0 no V4, que tem TCXO)" "$(state_get PPM 0)")
+    run set_radio "$gain" "$bias" "${ppm:-0}" && say "Rádio: ganho $gain, bias-tee $bias, ppm ${ppm:-0}.\nO readsb foi reiniciado."
+}
+
+menu_hostname() {
+    local n
+    n=$(ask "Nome da estação na rede (vira <nome>.local)" "$(hostname)")
+    [[ -n $n ]] && run set_hostname "$n" && say "Nome salvo: $n.local"
+}
+
+menu_logs() {
+    local f
+    f=$(mktemp)
+    {
+        echo "=== readsb"; journalctl -u readsb -n 40 --no-pager 2>/dev/null || true
+        echo; echo "=== primeiro boot"; tail -n 40 /var/log/adsb-firstboot.log 2>/dev/null || true
+    } > "$f"
+    whiptail --title "$TITLE" --scrolltext --textbox "$f" 24 100
+    rm -f "$f"
+}
+
+menu() {
+    local c
+    while true; do
+        c=$(whiptail --title "$TITLE" --menu "$(hostname) - escolha" 20 70 10 \
+            1 "Estado da estação" \
+            2 "Localização da antena (lat/lon/altitude)" \
+            3 "Rede Wi-Fi (adaptador USB)" \
+            4 "Rádio: ganho, bias-tee, ppm" \
+            5 "Nome na rede" \
+            6 "Trocar a senha de $(state_get USERNAME adsb)" \
+            7 "Ver logs" \
+            8 "Reiniciar o readsb" \
+            9 "Reiniciar a estação" \
+            3>&1 1>&2 2>&3) || exit 0
+        case $c in
+            1) say "$(status)" || true ;;
+            2) menu_location || true ;;
+            3) menu_wifi || true ;;
+            4) menu_radio || true ;;
+            5) menu_hostname || true ;;
+            6) clear; passwd "$(state_get USERNAME adsb)" || true; read -rp "Enter para voltar" _ ;;
+            7) menu_logs || true ;;
+            8) { run restart_readsb && say "readsb reiniciado."; } || true ;;
+            9) if whiptail --title "$TITLE" --yesno "Reiniciar a estação agora?" 8 50; then svc reboot; fi ;;
+        esac
+    done
+}
+
+# ---------------------------------------------------------------- commands
+usage() { sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; }
+
+case ${1:-} in
+    "")           command -v whiptail >/dev/null || { usage; exit 1; }; menu ;;
+    status)       status ;;
+    location)     shift; [[ $# -ge 2 ]] || { usage; exit 2; }; set_location "$@" ;;
+    wifi)         shift; [[ $# -ge 1 ]] || { usage; exit 2; }
+                  h=""; args=()
+                  for a in "$@"; do if [[ $a == --hidden ]]; then h=hidden; else args+=("$a"); fi; done
+                  [[ -n $(state_get WIFI_COUNTRY) ]] || set_country BR
+                  [[ ${#args[@]} -ge 1 ]] || { usage; exit 2; }
+                  set_wifi "${args[0]}" "${args[1]:-}" "$h" ;;
+    wifi-country) set_country "${2:-}" ;;
+    wifi-off)     wifi_off ;;
+    wifi-scan)    wifi_scan || { echo "nenhum adaptador Wi-Fi"; exit 1; } ;;
+    radio)        shift; [[ $# -ge 2 ]] || { usage; exit 2; }; set_radio "$@" ;;
+    hostname)     set_hostname "${2:-}" ;;
+    -h|--help|help) usage ;;
+    *)            usage; exit 2 ;;
+esac
