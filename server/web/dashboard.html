@@ -181,6 +181,8 @@ td:first-child{font-weight:600;white-space:nowrap}
           <option value="planes">Planes overhead (ADS-B)</option></select></label>
         <label>Radar radius (nm)<input type="number" name="radar_nm" min="5" max="80"></label>
       </div>
+      <label style="margin-top:8px">Your ADS-B station (readsb/tar1090 aircraft.json, blank = none)<input type="url" name="adsb_local" placeholder="http://192.168.1.60/tar1090/data/aircraft.json"></label>
+      <label class="inline"><input type="checkbox" name="adsb_public"> Also merge the public networks (adsb.lol, adsb.fi)</label>
       <label class="inline" style="margin-top:8px"><input type="checkbox" name="iss"> Space Station passes (30 min heads-up, visible passes only)</label>
       <label class="inline"><input type="checkbox" name="launch"> Cape Canaveral launches you can see from here</label>
     </section>

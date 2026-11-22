@@ -1,0 +1,5 @@
+# Built on the station at first boot, from these exact commits (embedded in the
+# image by build-image.sh, so the first boot needs no internet).
+# name          repository                                   commit
+rtl-sdr-blog    https://github.com/rtlsdrblog/rtl-sdr-blog   aed0ea19f3a273370a13c9009b96313c75d54c7b
+readsb          https://github.com/wiedehopf/readsb          88877b96dff8f82cf75a7759f67dccabc85edcfb

@@ -92,6 +92,7 @@ Os padrões já vêm para Salvador:
 | Notícias | g1, g1 Economia, Agência Brasil |
 | Cotações | `^BVSP`, `BRL=X`, `IFIX.SA`, `BTC-BRL` |
 | Canto do céu | `sea` (maré e ondas); `planes` traz de volta o radar de aviões |
+| Estação ADS-B | nenhuma; `adsb_local` aponta para o `aircraft.json` da sua (`QUAD_ADSB_LOCAL` no `.env`) |
 
 Para outro time, acrescente no `config.json` com o id da ESPN, que aparece na URL do clube em espn.com.br. Por exemplo, `"custom_teams": {"flamengo": ["Flamengo", "soccer", "bra.1", "819"]}`, e depois `flamengo` na lista `teams`.
 
@@ -106,7 +107,7 @@ Todas são gratuitas e sem chave:
 - **Notícias:** RSS do g1, da Agência Brasil, da Folha e da BBC News Brasil.
 - **Cotações:** Yahoo Finance.
 - **Futebol:** API pública da ESPN (com os nomes e as notícias da ESPN Brasil).
-- **Céu:** CelesTrak (passagens da ISS) e Launch Library 2 (lançamentos). Para o radar de aviões opcional, adsb.lol e adsb.fi, que hoje não cobrem Salvador.
+- **Céu:** CelesTrak (passagens da ISS) e Launch Library 2 (lançamentos). Para o radar de aviões opcional, adsb.lol e adsb.fi, que hoje não cobrem Salvador, somados à sua própria estação ADS-B, se houver (veja [`station/`](station/README.md)).
 - **Resumo do dia:** o [Claude Code](https://code.claude.com) dentro do container, com a sua assinatura (`CLAUDE_CODE_OAUTH_TOKEN`). Sem token, fica desligado.
 
 ## Estrutura
@@ -114,6 +115,7 @@ Todas são gratuitas e sem chave:
 ```
 server/    Python: fontes de dados, renderização, servidor de long-poll, dashboard
 kindle/    extensão do KUAL + script busybox do Kindle (e o guia de instalação)
+station/   imagem do SD da estação ADS-B (Le Potato + RTL-SDR) que alimenta o radar de aviões
 firmware/  firmware do Seeed reTerminal E1001, do projeto original
 docs/      imagens
 ```

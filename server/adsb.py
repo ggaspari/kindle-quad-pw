@@ -6,6 +6,9 @@ All three sources are free and keyless:
   adsb.fi       opendata /api/v2/lat/{lat}/lon/{lon}/dist/{nm} -- live traffic,
                 another set of feeders (merged with adsb.lol; matters where
                 coverage is thin, e.g. Brazil)
+  local station readsb/tar1090 aircraft.json on your own receiver (station/),
+                e.g. http://<station>/tar1090/data/aircraft.json -- what your
+                antenna hears right now, merged with the networks above
   adsbdb.com    /v0/callsign/{cs}, /v0/aircraft/{hex} -- route + airframe
   logo pack     c0wsaysmoo/plane-tracker-rgb-pi, 16x16 PNGs keyed by ICAO
   kiwi.com      64x64 PNGs keyed by IATA (nicer, used when we know the IATA)
@@ -161,15 +164,38 @@ FEEDS = [
 ]
 FEED_STATUS = {}    # name -> aircraft count from the last poll, or "error: ..."
 
+# Your own receiver: the URL of its readsb/tar1090 aircraft.json ("" = none),
+# and whether the public networks are polled as well. app.py sets both from
+# the settings (adsb_local / adsb_public); QUAD_ADSB_LOCAL seeds the default.
+LOCAL_URL = ""
+USE_PUBLIC = True
+LOCAL_NAME = "station"
+STALE_POS_S = 60    # readsb keeps an aircraft for a while after its last position
+
+
+def _feeds(lat, lon, radius_nm):
+    """(name, url, is_local) for every feed this poll should ask."""
+    out = []
+    if LOCAL_URL:
+        out.append((LOCAL_NAME, LOCAL_URL, True))
+    if USE_PUBLIC or not LOCAL_URL:
+        r = int(min(250, radius_nm))
+        out += [(name, url.format(lat=lat, lon=lon, r=r), False) for name, url in FEEDS]
+    return out
+
 
 def fetch_nearby(lat: float, lon: float, radius_nm: int = 25, timeout: float = 8.0):
-    """Live aircraft within radius, merged across FEEDS (one entry per ICAO
-    hex, freshest position wins). Raises only if every feed fails."""
+    """Live aircraft within radius, merged across the local station and FEEDS
+    (one entry per ICAO hex, freshest position wins, the station on a tie).
+    Raises only if every feed fails."""
     merged, errors = {}, []
-    for name, url in FEEDS:
+    feeds = _feeds(lat, lon, radius_nm)
+    for name in list(FEED_STATUS):
+        if name not in {f[0] for f in feeds}:
+            del FEED_STATUS[name]           # a feed switched off in the settings
+    for name, url, local in feeds:
         try:
-            r = requests.get(url.format(lat=lat, lon=lon, r=int(min(250, radius_nm))),
-                             headers={"User-Agent": UA}, timeout=timeout)
+            r = requests.get(url, headers={"User-Agent": UA}, timeout=timeout)
             r.raise_for_status()
             data = r.json()
         except Exception as exc:
@@ -177,13 +203,20 @@ def fetch_nearby(lat: float, lon: float, radius_nm: int = 25, timeout: float = 8
             errors.append(f"{name}: {exc!r}"[:120])
             continue
         acs = data.get("ac") or data.get("aircraft") or []
+        if local:
+            # aircraft.json is everything the antenna hears, with no radius
+            # filter and with aircraft whose position has gone stale
+            acs = [a for a in acs if a.get("lat") is not None and a.get("lon") is not None
+                   and a.get("seen_pos", 0) <= STALE_POS_S
+                   and haversine_nm(lat, lon, a["lat"], a["lon"]) <= radius_nm]
         FEED_STATUS[name] = len(acs)
         for raw in acs:
-            key = raw.get("hex") or id(raw)
+            key = (raw.get("hex") or "").lower().lstrip("~") or id(raw)
             old = merged.get(key)
-            if old is None or (raw.get("seen_pos", 99) < old.get("seen_pos", 99)):
-                merged[key] = raw
-    if len(errors) == len(FEEDS):
+            pos, old_pos = raw.get("seen_pos", 99), (old or {}).get("seen_pos", 99)
+            if old is None or pos < old_pos or (local and pos == old_pos):
+                merged[key] = dict(raw, _src=name)
+    if len(errors) == len(feeds):
         raise RuntimeError("all ADS-B feeds failed: " + "; ".join(errors))
     out = []
     for raw in merged.values():

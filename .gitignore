@@ -17,3 +17,6 @@ kindle/extensions/quadboard/quad.log
 
 # Docker
 .env
+
+# ADS-B station image build
+station/work/

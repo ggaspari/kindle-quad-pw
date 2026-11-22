@@ -85,6 +85,10 @@ DEFAULTS = {
     "odds_style": "spread",      # spread | moneyline | winpct (hockey/baseball always moneyline)
     "sky_mode": "sea",           # sky corner: "sea" (tides, waves; Open-Meteo Marine) | "planes" (ADS-B)
     "radar_nm": 25,
+    # your own ADS-B receiver (station/ in this repo): its readsb/tar1090
+    # aircraft.json, e.g. http://192.168.1.60/data/aircraft.json
+    "adsb_local": os.environ.get("QUAD_ADSB_LOCAL", ""),
+    "adsb_public": True,         # also merge adsb.lol + adsb.fi (always on without a local station)
     "iss": True, "launch": True,
     # needs the claude CLI and a login; on by default only where both exist
     "llm_brief": bool(shutil.which("claude")) and bool(
@@ -132,6 +136,14 @@ S.CLOCK24 = cfg.get("clock") != "12"
 S.LANG = "en" if cfg.get("lang") == "en" else "pt"
 S.DECIMAL_COMMA = cfg.get("number_format") != "us"
 S.TEAMS.update({k: tuple(v) for k, v in cfg.get("custom_teams", {}).items()})
+
+
+def apply_adsb():
+    adsb.LOCAL_URL = (cfg.get("adsb_local") or "").strip()
+    adsb.USE_PUBLIC = bool(cfg.get("adsb_public", True))
+
+
+apply_adsb()
 
 
 def quiet_now(t=None):
@@ -685,15 +697,19 @@ class H(BaseHTTPRequestHandler):
         new["kindle_touch_flip"] = "".join(a for a in "xy" if a in str(new["kindle_touch_flip"]).lower())
         if sorted(new["slots"]) != sorted(R.PANELS):
             raise ValueError("slots must use each panel exactly once")
-        moved = (new["lat"], new["lon"], new["radar_nm"], new["iss"], new["launch"], new["sky_mode"]) != \
-                (cfg["lat"], cfg["lon"], cfg["radar_nm"], cfg["iss"], cfg["launch"], cfg["sky_mode"])
+        new["adsb_local"] = new["adsb_local"].strip()
+        if new["adsb_local"] and not re.match(r"https?://", new["adsb_local"]):
+            raise ValueError("adsb_local must be an http:// or https:// URL")
+        moved = any(new[k] != cfg[k] for k in ("lat", "lon", "radar_nm", "iss", "launch", "sky_mode"))
         rewx = moved or any(new[k] != cfg[k] for k in ("units", "alerts", "alert_geocode"))
+        moved = moved or any(new[k] != cfg[k] for k in ("adsb_local", "adsb_public"))   # sky only
         cfg.clear()
         cfg.update(new)
         S.CLOCK24 = cfg.get("clock") != "12"
         S.LANG = "en" if cfg.get("lang") == "en" else "pt"
         S.DECIMAL_COMMA = cfg.get("number_format") != "us"
         S.TEAMS.update({k: tuple(v) for k, v in cfg.get("custom_teams", {}).items()})
+        apply_adsb()
         save_json(CONFIG_PATH, {k: v for k, v in cfg.items() if DEFAULTS.get(k) != v})
         if moved:
             start_sky()

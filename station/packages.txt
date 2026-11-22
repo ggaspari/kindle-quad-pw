@@ -1,0 +1,17 @@
+# Debian 12 arm64 packages preloaded into the image (with whatever they pull in
+# that the base image lacks) and installed offline at first boot.
+openssh-server
+avahi-daemon
+libnss-mdns
+lighttpd
+curl
+ca-certificates
+git
+jq
+build-essential
+cmake
+pkg-config
+libusb-1.0-0-dev
+libncurses-dev
+zlib1g-dev
+libzstd-dev
