@@ -3,11 +3,11 @@
 Uma estação própria de rastreio de aviões para o canto do céu do Quad Board. Ela vê os aviões que passam sobre Salvador, onde as redes públicas (adsb.lol, adsb.fi) quase não têm receptores.
 
 - **Placa:** Libre Computer **Le Potato** (AML-S905X-CC), com rede cabeada
-- **Rádio:** **RTL-SDR Blog V4** (serve qualquer RTL-SDR) e uma antena de 1090 MHz
-- **Software:** Debian 12 oficial da Libre Computer, mais o driver do RTL-SDR Blog (com suporte ao V4), o [readsb](https://github.com/wiedehopf/readsb) e, opcional, o mapa [tar1090](https://github.com/wiedehopf/tar1090)
+- **Rádio:** **RTL-SDR Blog V3 ou V4** (serve qualquer RTL-SDR) e uma antena de 1090 MHz
+- **Software:** Debian 12 oficial da Libre Computer, mais o driver do RTL-SDR Blog (com suporte ao V3 e ao V4), o [readsb](https://github.com/wiedehopf/readsb) e, opcional, o mapa [tar1090](https://github.com/wiedehopf/tar1090)
 
 ```
-antena ─ RTL-SDR V4 ─ Le Potato (readsb) ── http://<estação>/data/aircraft.json
+antena ─ RTL-SDR V3/V4 ─ Le Potato (readsb) ── http://<estação>/data/aircraft.json
                                                    ▲
                        servidor do Quad Board ─────┘  junta com adsb.lol / adsb.fi
                                                        e desenha o canto do céu
@@ -171,7 +171,7 @@ A tabela **Health** do dashboard mostra, em "Plane networks", quantos aviões ca
 
 ## Notas
 
-- **RTL-SDR Blog V4:** o `librtlsdr` 0.6 do Debian não reconhece o V4. Por isso, o driver vem do [rtl-sdr-blog](https://github.com/rtlsdrblog/rtl-sdr-blog), instalado em `/usr/local`, e o driver DVB-T do kernel fica bloqueado (`/etc/modprobe.d/blacklist-rtl-sdr.conf`).
+- **RTL-SDR Blog V3/V4:** o `librtlsdr` 0.6 do Debian não reconhece o V4 e não liga o bias-tee do V3. Por isso, o driver vem do [rtl-sdr-blog](https://github.com/rtlsdrblog/rtl-sdr-blog), que atende os dois, instalado em `/usr/local`, e o driver DVB-T do kernel fica bloqueado (`/etc/modprobe.d/blacklist-rtl-sdr.conf`).
 - **Bias-tee:** `BIAS_TEE=yes` alimenta um LNA ou filtro pelo cabo. Não ligue com uma antena em curto DC.
 - **Portas** (para alimentar outras redes depois): Beast na 30005, SBS na 30003 e entrada Beast nas 30004/30104.
 - **Atualizar o readsb ou o driver:** troque o commit no `sources.lock` e gere uma imagem nova. Na estação já em uso, compile à mão a partir do repositório.

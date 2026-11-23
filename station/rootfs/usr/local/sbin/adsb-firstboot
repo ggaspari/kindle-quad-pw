@@ -1,6 +1,6 @@
 #!/bin/bash
 # ADS-B station first boot: turns the Libre Computer Debian 12 image into a
-# readsb receiver for an RTL-SDR (Blog V4 included). Everything it needs is
+# readsb receiver for an RTL-SDR (Blog V3 and V4 included). Everything it needs is
 # already in the image (build-image.sh put it there), so it runs without
 # internet; only the optional tar1090 map is downloaded.
 #
@@ -106,7 +106,7 @@ passwd -l root >/dev/null                # the base image ships a root password
 
 # ---------------------------------------------------------------- build
 build=$(mktemp -d)
-echo "--- rtl-sdr-blog (RTL-SDR Blog V4 support)"
+echo "--- rtl-sdr-blog (RTL-SDR Blog V3/V4 support)"
 tar xzf "$PAYLOAD/src/rtl-sdr-blog.tar.gz" -C "$build"
 cmake -S "$build/rtl-sdr-blog" -B "$build/rtl-sdr-blog/build" \
     -DCMAKE_BUILD_TYPE=Release -DINSTALL_UDEV_RULES=ON -DDETACH_KERNEL_DRIVER=ON \

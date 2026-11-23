@@ -184,7 +184,7 @@ menu_radio() {
     [[ $(state_get BIAS_TEE no) == yes ]] || dflt=(--defaultno)
     if whiptail --title "$TITLE" "${dflt[@]}" --yesno "Ligar o bias-tee (4,5 V pelo cabo, para LNA/filtro)?\nNão ligue com antena em curto DC." 9 70
     then bias=yes; else bias=no; fi
-    ppm=$(ask "Correção de frequência (ppm; 0 no V4, que tem TCXO)" "$(state_get PPM 0)")
+    ppm=$(ask "Correção de frequência (ppm; 0 no V3/V4, que têm TCXO)" "$(state_get PPM 0)")
     run set_radio "$gain" "$bias" "${ppm:-0}" && say "Rádio: ganho $gain, bias-tee $bias, ppm ${ppm:-0}.\nO readsb foi reiniciado."
 }
 

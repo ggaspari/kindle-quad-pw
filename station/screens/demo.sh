@@ -13,8 +13,8 @@ set_country() { state_set WIFI_COUNTRY "${1^^}"; }
 set_wifi() { state_set WIFI_SSID "$1"; }
 wifi_off() { state_set WIFI_SSID ""; }
 
-# hardware: an RTL-SDR Blog V4, a USB Wi-Fi adapter and a few networks around
-sdr_present() { echo "RTLSDRBlog Blog V4"; }
+# hardware: an RTL-SDR Blog V3 (as its USB descriptor names itself), a USB Wi-Fi adapter and a few networks around
+sdr_present() { echo "Realtek RTL2838UHIDIR"; }
 wifi_iface() { echo wlx00e04c81920a; }
 wifi_scan() {
     printf '%s\t%s\n' -41.00 "Casa" -55.00 "Casa 5G" -68.00 "Vizinho_2G" -74.00 "NET_2G4F1C" -82.00 "iPhone de Ana"
