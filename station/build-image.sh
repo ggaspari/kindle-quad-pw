@@ -1,8 +1,18 @@
 #!/bin/bash
-# Builds the ADS-B station SD card image for the Libre Computer "Le Potato"
-# (AML-S905X-CC) with an RTL-SDR, from Libre Computer's official Debian 12 image.
+# Builds the ADS-B station SD card image for a Libre Computer board with an
+# RTL-SDR, from Libre Computer's official Debian 12 image for that board:
 #
-#   sudo station/build-image.sh [work dir]     -> <work dir>/out/adsb-station-lepotato-*.img.xz
+#   sudo station/build-image.sh [work dir]                -> <work dir>/out/adsb-station-lepotato-*.img.xz
+#   sudo BOARD=tritium-h5 station/build-image.sh [work dir] -> <work dir>/out/adsb-station-tritium-h5-*.img.xz
+#   sudo BOARD=lafrite station/build-image.sh [work dir]    -> <work dir>/out/adsb-station-lafrite-*.img.xz
+#
+# BOARD: lepotato   "Le Potato" AML-S905X-CC (default)
+#        tritium-h5 "Tritium" ALL-H3-CC with the H5 chip (the 2 GB, 64-bit one;
+#                   the H3 and H2+ versions are 32-bit and not supported)
+#        lafrite    "La Frite" AML-S805X-AC: Libre's generic arm64 image, with no
+#                   u-boot in it; the board boots it from its SPI flash (EFI).
+#                   It has no microSD slot: write the image to eMMC or a USB stick.
+# Le Potato's and Tritium's images carry their own u-boot, so they only boot on their board.
 #
 # Nothing is mounted and nothing arm64 runs here, so it works in an unprivileged
 # container (it does need root, to keep file owners): the btrfs root is read
@@ -14,15 +24,21 @@
 # Needs: btrfs-progs >= 6, mtools, xz-utils, fdisk (sfdisk), apt, git, curl.
 set -euo pipefail
 
-BASE_URL="https://distro.libre.computer/ci/debian/12/debian-12-base-arm64%2Baml-s905x-cc.img.xz"
-BASE_SHA256="ffae0d7b42c02ed496f9ec6ad6f3b6eb74dbad1dc3849441f826203e8fa6e7c0"   # 2024-01-25 build
+BOARD=${BOARD:-lepotato}
+case $BOARD in      # Libre's SHA256SUMS, 2024-01-25 builds
+    lepotato)   BASE=aml-s905x-cc BASE_SHA256=ffae0d7b42c02ed496f9ec6ad6f3b6eb74dbad1dc3849441f826203e8fa6e7c0 ;;
+    tritium-h5) BASE=all-h3-cc-h5 BASE_SHA256=c4c74b144274efee9298a0371b367c58a40e178f66a12a600ce0ed59ee2acdb0 ;;
+    lafrite)    BASE=arm64        BASE_SHA256=b8d34c328f6a45c56eafa74cc5f11c21f509db9ac263e42d423bf98551577754 ;;
+    *) echo "unknown BOARD '$BOARD' (lepotato, tritium-h5 or lafrite)"; exit 1 ;;
+esac
+BASE_URL="https://distro.libre.computer/ci/debian/12/debian-12-base-arm64%2B$BASE.img.xz"
 ROOT_MB=${ROOT_MB:-3072}       # starting size of the root filesystem (mkfs may need more); growroot fills the SD card at first boot
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 WORK=$(realpath -m "${1:-$HERE/work}")
 OUT=$WORK/out
 STAMP=$(date +%Y%m%d)
-NAME=adsb-station-lepotato-$STAMP
+NAME=adsb-station-$BOARD-$STAMP
 
 [[ $EUID -eq 0 ]] || { echo "run as root (file owners in the image must stay root)"; exit 1; }
 for t in btrfs mkfs.btrfs mcopy xz sfdisk apt-get git curl sha256sum; do
@@ -33,10 +49,10 @@ mkdir -p "$WORK" "$OUT"
 log() { echo "[$(date +%H:%M:%S)] $*"; }
 
 # ---------------------------------------------------------------- base image
-BASE_XZ=$WORK/base.img.xz
-if ! echo "$BASE_SHA256  $BASE_XZ" | sha256sum -c --quiet 2>/dev/null; then
+BASE_XZ=$WORK/base-$BASE.img.xz
+if ! echo "$BASE_SHA256  $BASE_XZ" | sha256sum -c --quiet >/dev/null 2>&1; then
     log "downloading the base image (1.5 GB)"
-    curl -fL --retry 3 -o "$BASE_XZ.part" "$BASE_URL"
+    curl -fL --retry 5 -C - -o "$BASE_XZ.part" "$BASE_URL"     # -C -: resume a dropped download
     mv "$BASE_XZ.part" "$BASE_XZ"
     echo "$BASE_SHA256  $BASE_XZ" | sha256sum -c --quiet
 fi

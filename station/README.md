@@ -1,13 +1,13 @@
-# Estação ADS-B (Le Potato + RTL-SDR)
+# Estação ADS-B (placas Libre Computer + RTL-SDR)
 
 Uma estação própria de rastreio de aviões para o canto do céu do Quad Board. Ela vê os aviões que passam sobre Salvador, onde as redes públicas (adsb.lol, adsb.fi) quase não têm receptores.
 
-- **Placa:** Libre Computer **Le Potato** (AML-S905X-CC), com rede cabeada
+- **Placa:** Libre Computer **Le Potato** (AML-S905X-CC), **Tritium H5** (ALL-H3-CC com o chip H5, a de 2 GB) ou **La Frite** (AML-S805X-AC), com rede cabeada
 - **Rádio:** **RTL-SDR Blog V3 ou V4** (serve qualquer RTL-SDR) e uma antena de 1090 MHz
 - **Software:** Debian 12 oficial da Libre Computer, mais o driver do RTL-SDR Blog (com suporte ao V3 e ao V4), o [readsb](https://github.com/wiedehopf/readsb) e, opcional, o mapa [tar1090](https://github.com/wiedehopf/tar1090)
 
 ```
-antena ─ RTL-SDR V3/V4 ─ Le Potato (readsb) ── http://<estação>/data/aircraft.json
+antena ─ RTL-SDR V3/V4 ─ placa (readsb) ────── http://<estação>/data/aircraft.json
                                                    ▲
                        servidor do Quad Board ─────┘  junta com adsb.lol / adsb.fi
                                                        e desenha o canto do céu
@@ -21,8 +21,18 @@ Num Linux (ou WSL2, ou no próprio CasaOS), como root:
 
 ```sh
 sudo apt install btrfs-progs mtools xz-utils fdisk git curl
-sudo station/build-image.sh            # saída em station/work/out/
+sudo station/build-image.sh                     # Le Potato; saída em station/work/out/
+sudo BOARD=tritium-h5 station/build-image.sh    # Tritium H5
+sudo BOARD=lafrite station/build-image.sh       # La Frite
 ```
+
+Confira a placa pela marcação impressa: **AML-S905X-CC** é a Le Potato, **ALL-H3-CC** é a Tritium e **AML-S805X-AC** é a La Frite. As imagens da Le Potato e da Tritium trazem o u-boot da placa e só dão boot nela.
+
+A **La Frite** usa a imagem genérica arm64 da Libre, sem u-boot: quem dá o boot é o u-boot gravado no chip SPI da própria placa. Ela não tem slot de microSD, então grave a imagem num pendrive USB ou no módulo eMMC (com um adaptador eMMC→USB). Com 1 GB de RAM, ela roda a estação sem problema; só o primeiro boot é um pouco mais lento.
+
+A **Tritium** tem três versões com a mesma marcação, e só a **H5** (2 GB, 64 bits) é suportada. O chip fica sob o dissipador; na dúvida, a de 2 GB é a H5. As versões H3 e H2+ são de 32 bits e precisariam de outra imagem base.
+
+Num CasaOS (ou outro sistema em que a pasta do repositório fica num mergerfs/FUSE), passe uma pasta de trabalho fora dele, por exemplo `sudo station/build-image.sh /var/tmp/adsb-work`. Pelo FUSE, a cópia da partição fica umas 20 vezes mais lenta.
 
 O script não monta nada nem roda código arm64: ele baixa a imagem oficial (e confere o SHA-256), lê a partição btrfs, acrescenta os arquivos da estação e reescreve a partição com o mesmo UUID. Também põe dentro da imagem os pacotes `.deb` que faltam e o código-fonte do driver e do readsb, nos commits fixados em [`sources.lock`](sources.lock). Assim, o primeiro boot funciona sem internet.
 
@@ -30,14 +40,14 @@ Variável opcional: `ROOT_MB` define o tamanho da partição na imagem (padrão:
 
 ## 2. Gravar e configurar
 
-1. Grave o `adsb-station-lepotato-AAAAMMDD.img.xz` num cartão de 8 GB ou mais, com o [balenaEtcher](https://etcher.balena.io) ou o Raspberry Pi Imager ("usar imagem personalizada").
+1. Grave o `adsb-station-<placa>-AAAAMMDD.img.xz` num cartão de 8 GB ou mais, com o [balenaEtcher](https://etcher.balena.io) ou o Raspberry Pi Imager ("usar imagem personalizada"). Na La Frite, grave num pendrive ou no módulo eMMC, de 8 GB ou mais.
 2. Tire e recoloque o cartão no computador. Na partição **boot** (FAT, abre no Windows), edite o `adsb-station.conf`:
    - `PASSWORD` e/ou `SSH_PUBKEY`: sem pelo menos um dos dois, a estação se recusa a configurar;
    - `LAT`, `LON` e `ALT_M` da antena;
    - `HOSTNAME`, se quiser outro nome além de `adsb-station`;
    - `WIFI_SSID` e `WIFI_PSK`, se a estação for usar um adaptador Wi-Fi USB em vez do cabo;
    - `TAR1090=no`, se não quiser o [mapa](#mapa-tar1090) (o padrão é `yes`).
-3. Ligue o cabo de rede (ou o adaptador Wi-Fi), o RTL-SDR e a fonte (5 V, 2 A ou mais). Para o mapa vir junto, a estação precisa de internet no primeiro boot.
+3. Ligue o cabo de rede (ou o adaptador Wi-Fi), o RTL-SDR e a fonte (5 V, 2 A ou mais, pelo micro-USB). Para o mapa vir junto, a estação precisa de internet no primeiro boot.
 
 ## 3. Primeiro boot
 
@@ -137,7 +147,7 @@ Tudo fica em `/etc/adsb-station.conf`, e o `/etc/default/readsb` é gerado a par
 
 ### Wi-Fi por USB
 
-A Le Potato não tem Wi-Fi na placa. Funcionam os adaptadores USB com driver no kernel da imagem (6.1), com o firmware já incluído:
+Nenhuma das placas tem Wi-Fi. Funcionam os adaptadores USB com driver no kernel da imagem (6.1), com o firmware já incluído:
 
 - **Realtek:** `rtl8xxxu` (RTL8188CUS/EUS, RTL8192CU/EU), `r8188eu`, `rtw88` (RTL8821CU, RTL8822BU, RTL8723DU)
 - **MediaTek / Ralink:** `mt7601u`, `mt76x0u`, `mt76x2u`, `mt7921u`, `rt2800usb`
