@@ -115,7 +115,7 @@ Todas são gratuitas e sem chave:
 ```
 server/    Python: fontes de dados, renderização, servidor de long-poll, dashboard
 kindle/    extensão do KUAL + script busybox do Kindle (e o guia de instalação)
-station/   imagem do SD da estação ADS-B (Le Potato + RTL-SDR) que alimenta o radar de aviões
+station/   imagem do SD da estação ADS-B (placas Libre Computer + RTL-SDR) que alimenta o radar de aviões
 firmware/  firmware do Seeed reTerminal E1001, do projeto original
 docs/      imagens
 ```
